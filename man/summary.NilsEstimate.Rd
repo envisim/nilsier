@@ -5,26 +5,31 @@
 \alias{print.summary.NilsEstimate}
 \title{Summary of the NilsEstimate}
 \usage{
-\method{summary}{NilsEstimate}(obj)
+\method{summary}{NilsEstimate}(object, ...)
 
-\method{print}{summary.NilsEstimate}(obj)
+\method{print}{summary.NilsEstimate}(x, ...)
 }
 \arguments{
-\item{obj}{An object of class \code{NilsEstimate}}
+\item{object, x}{An object of class \code{NilsEstimate}}
+
+\item{...}{additional unused arguments}
 }
 \description{
 Returns a list of summary statistics of the NilsEstimate object
 }
 \details{
 The returned list has the following names:
-\itemize{
-\item \code{estimate} for the estimate of the total,
-\item \code{variance} for the variance estimate of the total,
-\item \code{rel_se} for the relative standard error of the total.
+\describe{
+\item{estimate}{the estimate of the total}
+\item{variance}{the estimated variance of the estimator of the total}
+\item{rel_se}{the estimated relative standard error of the estimator of the total}
+\item{nonnil_tracts}{the number of non-nil tracts (not shown if filter has been applied)}
+}
+}
+\examples{
+\dontrun{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+summary(obj);
 }
 
-If the data has not been filtered, it also contains:
-\itemize{
-\item \code{nonnil_tracts} for the number of non-nil tracts
-}
 }

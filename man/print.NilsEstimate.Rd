@@ -4,10 +4,14 @@
 \alias{print.NilsEstimate}
 \title{Print}
 \usage{
-\method{print}{NilsEstimate}(obj, complete = TRUE)
+\method{print}{NilsEstimate}(x, complete = TRUE, ...)
 }
 \arguments{
+\item{x}{the NilsEstimate object}
+
 \item{complete}{If \code{FALSE}, excludes apparent 0-tracts}
+
+\item{...}{additional unused arguments}
 }
 \description{
 Print

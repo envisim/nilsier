@@ -1,0 +1,14 @@
+\.gitignore
+\.git
+\.\.Rcheck
+\.Rhistory
+
+aux$
+log$
+out$
+png$
+
+CHANGELOG\.md$
+man-roxygen/
+local-testing/
+test/

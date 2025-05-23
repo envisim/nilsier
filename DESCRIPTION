@@ -3,17 +3,22 @@ Type: Package
 Title: Design-based estimators for NILS
 Version: 0.0.2
 Date: 2024-06-19
-Author: Wilmer Prentius
+Authors@R: c(
+    person("Wilmer", "Prentius", email = "wilmer.prentius@slu.se", role = c("cre"), comment = c(ORCID = "0000-0002-3561-290X"))
+    )
+Author:
+    Wilmer Prentius [cre] (ORCID: <https://orcid.org/0000-0002-3561-290X>)
 Maintainer: Wilmer Prentius <wilmer.prentius@slu.se>
-Description: One paragraph description of what the package does as one
-        or more full sentences.
-License: --
+Description: Estimators and variance estimators for the National Inventories of Landscapes in Sweden (NILS) hierarchical sampling design.
+License: AGPL-3 + file LICENSE
+Depends:
+  R (>= 3.5.0)
 Imports:
-  Rcpp (>= 1.0.12)
+  Rcpp (>= 1.0.14)
 LinkingTo:
   Rcpp
 Encoding: UTF-8
 NeedsCompilation: yes
+LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
-
+RoxygenNote: 7.3.2

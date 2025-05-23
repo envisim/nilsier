@@ -6,6 +6,32 @@
 \usage{
 PreparePlotData(data, tid, cat, dw, y)
 }
+\arguments{
+\item{data}{A data.frame containing the plot information}
+
+\item{tid}{The name of the column containing tract id numbers}
+
+\item{cat}{The name of the column containing category id numbers}
+
+\item{dw}{The name of the column containing design weights}
+
+\item{y}{The name of the column containing the variable of interest}
+}
 \description{
-Takes the column names as formulas, and returns a correctly ordered data frame.
+Takes the column names as formulas, and returns a correctly ordered data frame for plot data.
+}
+\examples{
+\dontrun{
+wide_df = data.frame(
+  variable_y = runif(16),
+  variable_x = runif(16),
+  variable_z = runif(16),
+  grassland_cover = plots[, 4],
+  design_weight = plots[, 3],
+  category = plots[, 2],
+  tract_id = plots[, 1]
+);
+plot_data = PreparePlotData(wide_df, ~tract_id, ~category, ~design_weight, ~grassland_cover);
+}
+
 }

@@ -4,8 +4,25 @@
 \alias{efilter.NilsEstimate}
 \title{Filter}
 \usage{
-\method{efilter}{NilsEstimate}(obj, ...)
+\method{efilter}{NilsEstimate}(obj, psus = NULL, categories = NULL, ...)
+}
+\arguments{
+\item{obj}{the NilsEstimate object}
+
+\item{psus}{a vector of the psu id numbers to keep}
+
+\item{categories}{a vector of the category id numbers to keep}
+
+\item{...}{additional unused arguments}
 }
 \description{
-Filter
+Filters the results per PSU or categories.
+}
+\examples{
+\dontrun{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+# Exclude all categories except the categories with id number 1
+efilter(obj, categories = c(1));
+}
+
 }

@@ -5,17 +5,38 @@
 \alias{vcov.NilsEstimate}
 \title{Estimates of the NilsEstimate}
 \usage{
-\method{coef}{NilsEstimate}(obj)
+\method{coef}{NilsEstimate}(object, ...)
 
-\method{vcov}{NilsEstimate}(obj, complete = TRUE)
+\method{vcov}{NilsEstimate}(object, complete = TRUE, ...)
 }
 \arguments{
-\item{obj}{An object of class \code{NilsEstimate}}
+\item{object}{An object of class \code{NilsEstimate}}
+
+\item{...}{additional unused arguments}
 
 \item{complete}{If \code{FALSE}, excludes apparent 0-tracts}
+}
+\value{
+A vector containing the estimate and the variance estimate
+\describe{
+\item{estimate}{the estimate of the total}
+\item{variance}{the estimated variance of the estimator of the total}
+}
 }
 \description{
 Returns a vector of the estimate and variance estimate of the NilsEstimate object.
 
 Returns the covariance matrix of the NilsEstimate object
+}
+\examples{
+\dontrun{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+coef(obj);
+}
+
+\dontrun{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+vcov(obj);
+}
+
 }
