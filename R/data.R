@@ -1,11 +1,11 @@
 #' Tract sample data
 #'
-#' These data sets contain sample information on the grassland cover, gathered by the National
-#' Inventories of Landscapes in Sweden (NILS) in 2004. The sample covers the boreal south region of
-#' Sweden (boreal region south of the Dal River).
+#' These data sets contain sample information on the cover of lawns, gathered by the National
+#' Inventories of Landscapes in Sweden (NILS) in 2024. The sample covers the southern boreal region of
+#' Sweden (i.e. the boreal region South of the Dal River).
 #'
-#' The sample is reduced from the original, containing only the two most sparse subsamples, and the
-#' two strata (selection classes/categories) sampled there.
+#' The sample is reduced from the original, containing the two most sparse subsamples, and the
+#' two strata (selection classes/categories) sampled only there.
 #'
 #' @section Conceptual overview of the NILS sampling design:
 #' In NILS, a hierarchical sample of tracts is drawn (primary sampling unit, PSU), where each PSU is
@@ -24,7 +24,7 @@
 #'   \item{psu}{the id number of the primary sampling unit (PSU) of the tract}
 #' }
 #'
-#' @source <https://www.slu.se/en/Collaborative-Centres-and-Projects/nils/>
+#' @source <https://www.slu.se/om-slu/organisation/institutioner/skoglig-resurshushallning/miljoanalys/nils/>
 #'
 "tracts"
 
