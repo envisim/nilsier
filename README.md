@@ -2,7 +2,7 @@
 This repo contains an R-package which provides design-based estimators and variance estimators used
 in the NILS-programs.
 NILS is an acronym for the National Inventories of Landscapes in Sweden, a group of environmental
-monitoring programs govered by the [Swedish University of Agricultural Sciences](https://slu.se)
+monitoring programs governed by the [Swedish University of Agricultural Sciences](https://slu.se)
 (SLU).
 
 ## Installation
