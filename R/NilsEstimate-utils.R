@@ -1,22 +1,20 @@
-#' Estimates of the NilsEstimate
+#' Estimates of a NILS estimate
 #'
 #' @description
-#' Returns a vector of the estimate and variance estimate of the NilsEstimate object.
+#' Returns a numeric vector of the estimate and variance estimate of a `NilsEstimate` object.
 #'
-#' @param object An object of class `NilsEstimate`
-#' @param ... additional unused arguments
+#' @param object A `NilsEstimate` object.
+#' @param ... Additional arguments (currently unused).
 #'
-#' @returns A vector containing the estimate and the variance estimate
+#' @returns A named vector with the following elements:
 #' \describe{
-#'   \item{estimate}{the estimate of the total}
-#'   \item{variance}{the estimated variance of the estimator of the total}
+#'   \item{estimate}{Estimated total of the target variable.}
+#'   \item{variance}{Estimated variance of the total estimator.}
 #' }
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 #' coef(obj);
-#' }
 #'
 #' @method coef NilsEstimate
 #' @export
@@ -29,19 +27,18 @@ coef.NilsEstimate = function(object, ...) {
   ));
 }
 
-#' Covariance matrix for categories
+#' Covariance matrix for NILS category estimates
 #'
 #' @description
-#' Returns the covariance matrix of the NilsEstimate object
+#' Returns the covariance matrix of a `NilsEstimate` object.
 #'
-#' @param complete If `FALSE`, excludes apparent 0-tracts
-#' @param ... additional unused arguments
+#' @param object A `NilsEstimate` object.
+#' @param complete Logical. If `FALSE`, excludes apparent zero-tracts.
+#' @param ... Additional arguments (currently unused).
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 #' vcov(obj);
-#' }
 #'
 #' @rdname coef.NilsEstimate
 #' @method vcov NilsEstimate

@@ -1,53 +1,49 @@
-#' Estimate the total
+#' Estimate totals using the NILS hierachical design
 #'
 #' @description
-#' Estimates the total of some variable, surveyed using the NILS hiearchical design framework.
+#' Estimates the total of some variable surveyed under the NILS hiearchical sampling framework.
 #'
-#' @param plot_data A data frame containing information about observations.
-#' @param tract_data A matrix containing tract ids and the psus they belong to.
-#' @param psus An ordered vector of PSUs, ranging from largest to smallest (in terms of PSU sizes).
-#' @param category_psu_map A matrix containing categories and the psus they map to.
-#' @param area The size of the area frame. The area frame is most likely larger than the area of
-#' interest.
-#' @param tract_area The area of a tract, in the same unit as the value of the target variable.
+#' @param plot_data A data frame with information about observations at the plot level.
+#' Must contain (in order):
+#'   1. The tract ID (integer) of the parent tract.
+#'   2. The category ID (integer) recorded for the plot.
+#'   3. The design weight (double) for the plot, conditional on the tract.
+#'   4. The observed value of the target variable (double).
+#'
+#' @param tract_data A matrix with information about all sampled tracts,
+#' including those where no relevant categories were found.
+#' Must contain (in order):
+#'   1. The tract ID (integer) of each sampled tract.
+#'   2. The PSU collection ID (integer) of the smallest PSU that contains the tract.
+#'
+#' @param psus An ordered vector of PSU levels, from largest to smallest.
+#'
+#' @param category_psu_map A matrix describing the categories used in the design.
+#' Must contain (in order):
+#'   1. The category ID (integer), as used in `plot_data`.
+#'   2. The PSU collection ID (integer) of the smallest PSU in which the category is sampled.
+#'
+#' @param area The size of the area frame. Typically larger than the actual area of interest.
+#'
+#' @param tract_area The area of a tract, expressed in the same units as the target variable.
 #'
 #' @details
-#' `category_psu_map` contains information about the categories used in the design.
-#' The object should be a matrix with the following columns (in order):
+#' The function combines plot-level observations (`plot_data`), tract-level information
+#' (`tract_data`), PSU hierarchy (`psus`), and category assignments (`category_psu_map`) to estimate
+#' totals under the NILS sampling design.
 #'
-#' 1. The category id number (integer), as used in `plot_data`.
-#' 2. The PSU id number (integer) of that the category belongs to; the smallest PSU (id) in which the
-#' category is sampled.
-#'
-#' `tract_data` contains information about all sampled tracts, even those where no interesting
-#' category was found.
-#' The object should be a matrix with the following columns (in order):
-#' 1. The tract id numbers (integer) of all sampled tracts.
-#' 2. The PSU id number (integer) of the PSU that last sampled the tract; the smallest PSU which
-#' contains the tract.
-#'
-#' `plot_data` contains information about observed values on plot level.
-#' The object can contain multiple records per plot.
-#' The object should be a data frame with the following columns (in order):
-#' 1. the tract id number (integer) of the parent tract.
-#' 2. the category id number (integer) of the category recorded for the plot.
-#' 3. the design weight (double) for the plot, conditioned on the tract.
-#' 4. the value of the target variable (double).
-#'
-#' @returns A `NilsEstimate` object, essentially a data frame with the estimates per category. The
-#' data frame has the following columns
+#' @returns A `NilsEstimate` object, essentially a data frame with one row per category and the
+#' following columns:
 #' \describe{
-#'   \item{Cat. ID}{Category id number}
-#'   \item{Est. total}{The estimated total within the category}
-#'   \item{Est. variance}{The estimated variance of the estimator of total within the category}
-#'   \item{Positive tracts}{The number of tracts on which there was a recorded positive value of the
-#'   variable of interest, within the category}
+#'   \item{Cat. ID}{The category ID number.}
+#'   \item{Est. total}{The estimated total of the target variable within the category.}
+#'   \item{Est. variance}{The estimated variance of the total estimator within the category.}
+#'   \item{Positive tracts}{The number of tracts with at least one positive value of the
+#'   target variable in the category.}
 #' }
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
-#' }
 #'
 #' @export
 NilsEstimate = function(
@@ -86,35 +82,35 @@ NilsEstimate = function(
   ));
 }
 
-#' Estimate the total from a sample drawn using a spatially balanced design
-#' @param auxiliaries A (double) matrix of auxiliary information used in the balancing.
-#' Must match the size (and order) of tract_data.
-#' @param size_of_neighbourhood An optional vector of sizes of the neighbourhood for each PSU.
+#' Estimate totals using the NILS hierachical design, assuming a spatially balanced design
+#'
+#' @param auxiliaries A numeric matrix of auxiliary variables used for balancing. Must have the same
+#' dimensions and order as `tract_data`.
+#'
+#' @param size_of_neighbourhood An optional numeric vector specifying the neighbourhood size for
+#' each PSU level.
 #'
 #' @details
 #' ## NilsEstimateBalanced
-#' For the balanced variant, the variance is calculated by using a local neighbourhood deviance
-#' measure.
-#' The size of this local neighbourhood defaults to 4 for the smallest PSUs, and increases linearly
-#' by size.
+#' In the balanced variant, variance is estimated using a local neighbourhood deviance measure.
+#' The neighbourhood size defaults to 4 for the smallest PSU level and increases linearly with PSU
+#' level size.
 #'
-#' As the covariance between two categories belonging to different PSUs are measured on the
-#' intersect between these categories, e.g. on the smaller of the PSUs, the smaller PSU also decides
-#' the size of the local neighbourhood.
+#' Covariance between categories belonging to different PSU levels are measured over their
+#' intersection, i.e. on the smaller PSU collections.
+#' Consequently, the smaller PSU collection also determines the local neighbourhood size.
 #'
-#' It is possible to provide a matrix as `psus` instead of the vector. The matrix should have the
-#' following columns:
-#' 1. The PSU IDs, ranging from largest to smallest (in terms of PSU sizes).
-#' 2. The size of the neighbourhoods to use for each PSU.
+#' It is possible to provide a matrix as `psus` instead of a vector. This matrix should contain:
+#' 1. PSU IDs, ordered from largest to smallest (by PSU size).
+#' 2. The neighbourhood size for each PSU.
 #'
-#' If a matrix is not provided as `psus`, the neighbourhood size of PSU $k$ will default to
+#' If `psus` is provided as a vector, the neighbourhood size of PSU \eqn{k} defaults to
 #' \deqn{4 \frac{n_{k}}{n_{(0)}} ,}
-#' where \eqn{n_{k}} is the size of PSU \eqn{k}, and \eqn{n_{(0)}} is the size of the smallest PSU.
+#' where \eqn{n_{k}} is the size of PSU collection \eqn{k}, and \eqn{n_{(0)}} is the size of the
+#' smallest PSU collection.
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimateBalanced(plots, tracts, tract_auxilliaries, psus, category_psu_map);
-#' }
 #'
 #' @rdname NilsEstimate
 #' @export
@@ -164,19 +160,26 @@ NilsEstimateBalanced = function(
   return(obj);
 }
 
-#' Prepare plot data
+#' Prepare plot-level data
 #'
 #' @description
-#' Takes the column names as formulas, and returns a correctly ordered data frame for plot data.
+#' Reorders and extracts columns from a data frame to create a valid `plot_data` object.
+#' Column names are supplied as formulas for convenience.
 #'
-#' @param data A data.frame containing the plot information
-#' @param tid The name of the column containing tract id numbers
-#' @param cat The name of the column containing category id numbers
-#' @param dw The name of the column containing design weights
-#' @param y The name of the column containing the variable of interest
+#' @param data A data.frame containing plot-level information.
+#' @param tid A formula specifying the column containing tract IDs.
+#' @param cat A formula specifying the column containing category IDs.
+#' @param dw A formula specifying the column containing design weights.
+#' @param y A formula specifying the column containing the variable of interest.
+#'
+#' @returns
+#' A data frame with the required column order for use as `plot_data`:
+#' 1. Tract ID (integer).
+#' 2. Category ID (integer).
+#' 3. Design weight (double).
+#' 4. Value of the variable of interest (double).
 #'
 #' @examples
-#' \dontrun{
 #' wide_df = data.frame(
 #'   variable_y = runif(16),
 #'   variable_x = runif(16),
@@ -186,8 +189,8 @@ NilsEstimateBalanced = function(
 #'   category = plots[, 2],
 #'   tract_id = plots[, 1]
 #' );
+#'
 #' plot_data = PreparePlotData(wide_df, ~tract_id, ~category, ~design_weight, ~grassland_cover);
-#' }
 #'
 #' @export
 PreparePlotData = function(data, tid, cat, dw, y) {
