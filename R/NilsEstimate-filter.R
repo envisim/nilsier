@@ -1,23 +1,28 @@
+#' @rdname efilter.NilsEstimate
+#' @export
 efilter = function(obj, ...) {
   UseMethod("efilter");
 }
 
-#' Filter
+#' Filter NILS estimates
 #'
 #' @description
-#' Filters the results per PSU or categories.
+#' Filters a `NilsEstimate` object by PSU level or category.
 #'
-#' @param obj the NilsEstimate object
-#' @param psus a vector of the psu id numbers to keep
-#' @param categories a vector of the category id numbers to keep
-#' @param ... additional unused arguments
+#' @param obj A `NilsEstimate` object.
+#' @param psus An optional vector of PSU IDs to keep.
+#' @param categories An optional vector of the category IDs to keep.
+#' @param ... Additional arguments (currently unused)
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
-#' # Exclude all categories except the categories with id number 1
-#' efilter(obj, categories = c(1));
-#' }
+#'
+#' # Keep only category with ID 1
+#' efilter(obj, categories = 1)
+#'
+#' # Keep PSU 5
+#' efilter(obj, psus = 5)
+#'
 #'
 #' @method efilter NilsEstimate
 #' @export

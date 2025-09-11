@@ -4,29 +4,32 @@
 \name{nilsier}
 \alias{nilsier-package}
 \alias{nilsier}
-\title{nilsier: Design-based estimators for NILS}
+\title{nilsier: Design-Based Estimators for NILS}
 \description{
 The general design for the National Inventories of Landscapes in Sweden (NILS) environmental
 monitoring program can be described as follows:
-A (largest) PSU of tracts is sampled from the area frame. From this PSU, a smaller PSU is drawn,
-from which an even smaller PSU might be drawn, and so on.
+A large collection of PSUs (tracts) is sampled from the area frame.
+From this collection, a smaller collection is drawn, and from that, an even smaller collection
+may be drawn, et cetera.
 
-On each PSU, categorizations are introduced. The largest PSU categorizes some plots in the tract
-to be "uninteresting" (certain to not contain any variable of interest), while other plots are
-given a categorization, or left uncategorized. Next, the smaller PSU introduces categorization on
-the sofar uncategorized plots, until all potential plots have been categorized.
+For each PSU level, categorizations are introduced.
+The largest PSU level categorizes some plots in the tract, or markes the plots as unclassified.
+For every subsequent PSU level, additional categorizations may be introduced amongst the
+unclassified plots, until all plots have been categorized (or classified as totally
+uninteresting).
 
-Estimates are then produced per category and tract, and combined. Variance estimation takes into
-account some of the dependencies that exists between categories. If the PSUs were drawn using
-some spatially balanced design, the variance estimator assuming OSU sampling of PSUs will
-overestimate the variance. An alternative variance, such as the local mean variance estimator,
-can be used in order to reduce this overestimation somewhat (Grafström & Schelin, 2014).
+Estimates are produced per category and tract, and subsequently combined. Variance estimation
+takes into account some of the dependencies that exists between categories. If the PSU
+collections were drawn using  some spatially balanced design, the variance estimator assuming OSU
+sampling of PSUs will overestimate the variance. An alternative variance, such as the local mean
+variance estimator, can be used in order to reduce this overestimation somewhat
+(Grafström & Schelin, 2014).
 
-This package provides esimators and variance estimators for the NILS hierarchical design. The
-design is fruther described in Swedish by Grafström et al. (2003).
+This package provides estimators and variance estimators tailored to the NILS hierarchical design.
+For further details on the design (in Swedish), see Grafström et al. (2023).
 }
 \references{
-Grafström, A., Randlund, Å., & Adler, S. (2003).
+Grafström, A., Randlund, Å., & Adler, S. (2023).
 Skattningar baserade på hierarkiska urval. Arbetsrapport 558.
 Institutionen för skoglig resurshushållning, Sveriges lantbruksuniversitet, SLU.
 

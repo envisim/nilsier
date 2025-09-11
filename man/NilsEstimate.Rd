@@ -3,7 +3,7 @@
 \name{NilsEstimate}
 \alias{NilsEstimate}
 \alias{NilsEstimateBalanced}
-\title{Estimate the total}
+\title{Estimate totals using the NILS hierachical design}
 \usage{
 NilsEstimate(
   plot_data,
@@ -26,96 +26,86 @@ NilsEstimateBalanced(
 )
 }
 \arguments{
-\item{plot_data}{A data frame containing information about observations.}
+\item{plot_data}{A data frame with information about observations at the plot level.
+Must contain (in order):
+\enumerate{
+\item The tract ID (integer) of the parent tract.
+\item The category ID (integer) recorded for the plot.
+\item The design weight (double) for the plot, conditional on the tract.
+\item The observed value of the target variable (double).
+}}
 
-\item{tract_data}{A matrix containing tract ids and the psus they belong to.}
+\item{tract_data}{A matrix with information about all sampled tracts,
+including those where no relevant categories were found.
+Must contain (in order):
+\enumerate{
+\item The tract ID (integer) of each sampled tract.
+\item The PSU collection ID (integer) of the smallest PSU that contains the tract.
+}}
 
-\item{psus}{An ordered vector of PSUs, ranging from largest to smallest (in terms of PSU sizes).}
+\item{psus}{An ordered vector of PSU levels, from largest to smallest.}
 
-\item{category_psu_map}{A matrix containing categories and the psus they map to.}
+\item{category_psu_map}{A matrix describing the categories used in the design.
+Must contain (in order):
+\enumerate{
+\item The category ID (integer), as used in \code{plot_data}.
+\item The PSU collection ID (integer) of the smallest PSU in which the category is sampled.
+}}
 
-\item{area}{The size of the area frame. The area frame is most likely larger than the area of
-interest.}
+\item{area}{The size of the area frame. Typically larger than the actual area of interest.}
 
-\item{tract_area}{The area of a tract, in the same unit as the value of the target variable.}
+\item{tract_area}{The area of a tract, expressed in the same units as the target variable.}
 
-\item{auxiliaries}{A (double) matrix of auxiliary information used in the balancing.
-Must match the size (and order) of tract_data.}
+\item{auxiliaries}{A numeric matrix of auxiliary variables used for balancing. Must have the same
+dimensions and order as \code{tract_data}.}
 
-\item{size_of_neighbourhood}{An optional vector of sizes of the neighbourhood for each PSU.}
+\item{size_of_neighbourhood}{An optional numeric vector specifying the neighbourhood size for
+each PSU level.}
 }
 \value{
-A \code{NilsEstimate} object, essentially a data frame with the estimates per category. The
-data frame has the following columns
+A \code{NilsEstimate} object, essentially a data frame with one row per category and the
+following columns:
 \describe{
-\item{Cat. ID}{Category id number}
-\item{Est. total}{The estimated total within the category}
-\item{Est. variance}{The estimated variance of the estimator of total within the category}
-\item{Positive tracts}{The number of tracts on which there was a recorded positive value of the
-variable of interest, within the category}
+\item{Cat. ID}{The category ID number.}
+\item{Est. total}{The estimated total of the target variable within the category.}
+\item{Est. variance}{The estimated variance of the total estimator within the category.}
+\item{Positive tracts}{The number of tracts with at least one positive value of the
+target variable in the category.}
 }
 }
 \description{
-Estimates the total of some variable, surveyed using the NILS hiearchical design framework.
+Estimates the total of some variable surveyed under the NILS hiearchical sampling framework.
 }
 \details{
-\code{category_psu_map} contains information about the categories used in the design.
-The object should be a matrix with the following columns (in order):
-\enumerate{
-\item The category id number (integer), as used in \code{plot_data}.
-\item The PSU id number (integer) of that the category belongs to; the smallest PSU (id) in which the
-category is sampled.
-}
-
-\code{tract_data} contains information about all sampled tracts, even those where no interesting
-category was found.
-The object should be a matrix with the following columns (in order):
-\enumerate{
-\item The tract id numbers (integer) of all sampled tracts.
-\item The PSU id number (integer) of the PSU that last sampled the tract; the smallest PSU which
-contains the tract.
-}
-
-\code{plot_data} contains information about observed values on plot level.
-The object can contain multiple records per plot.
-The object should be a data frame with the following columns (in order):
-\enumerate{
-\item the tract id number (integer) of the parent tract.
-\item the category id number (integer) of the category recorded for the plot.
-\item the design weight (double) for the plot, conditioned on the tract.
-\item the value of the target variable (double).
-}
+The function combines plot-level observations (\code{plot_data}), tract-level information
+(\code{tract_data}), PSU hierarchy (\code{psus}), and category assignments (\code{category_psu_map}) to estimate
+totals under the NILS sampling design.
 
 \subsection{NilsEstimateBalanced}{
 
-For the balanced variant, the variance is calculated by using a local neighbourhood deviance
-measure.
-The size of this local neighbourhood defaults to 4 for the smallest PSUs, and increases linearly
-by size.
+In the balanced variant, variance is estimated using a local neighbourhood deviance measure.
+The neighbourhood size defaults to 4 for the smallest PSU level and increases linearly with PSU
+level size.
 
-As the covariance between two categories belonging to different PSUs are measured on the
-intersect between these categories, e.g. on the smaller of the PSUs, the smaller PSU also decides
-the size of the local neighbourhood.
+Covariance between categories belonging to different PSU levels are measured over their
+intersection, i.e. on the smaller PSU collections.
+Consequently, the smaller PSU collection also determines the local neighbourhood size.
 
-It is possible to provide a matrix as \code{psus} instead of the vector. The matrix should have the
-following columns:
+It is possible to provide a matrix as \code{psus} instead of a vector. This matrix should contain:
 \enumerate{
-\item The PSU IDs, ranging from largest to smallest (in terms of PSU sizes).
-\item The size of the neighbourhoods to use for each PSU.
+\item PSU IDs, ordered from largest to smallest (by PSU size).
+\item The neighbourhood size for each PSU.
 }
 
-If a matrix is not provided as \code{psus}, the neighbourhood size of PSU $k$ will default to
+If \code{psus} is provided as a vector, the neighbourhood size of PSU \eqn{k} defaults to
 \deqn{4 \frac{n_{k}}{n_{(0)}} ,}
-where \eqn{n_{k}} is the size of PSU \eqn{k}, and \eqn{n_{(0)}} is the size of the smallest PSU.
+where \eqn{n_{k}} is the size of PSU collection \eqn{k}, and \eqn{n_{(0)}} is the size of the
+smallest PSU collection.
 }
 }
 \examples{
-\dontrun{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);
-}
 
-\dontrun{
 obj = NilsEstimateBalanced(plots, tracts, tract_auxilliaries, psus, category_psu_map);
-}
 
 }

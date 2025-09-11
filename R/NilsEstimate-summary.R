@@ -1,25 +1,23 @@
-#' Summary of the NilsEstimate
+#' Summarize a NILS estimate
 #'
 #' @description
-#' Returns a list of summary statistics of the NilsEstimate object
+#' Produces summary statistics for a `NilsEstimate` object.
 #'
-#' @param object,x An object of class `NilsEstimate`
-#' @param ... additional unused arguments
+#' @param object,x A `NilsEstimate` object.
+#' @param ... Additional arguments (currently unused).
 #'
 #' @details
-#' The returned list has the following names:
+#' The returned list has the following components:
 #' \describe{
-#'   \item{estimate}{the estimate of the total}
-#'   \item{variance}{the estimated variance of the estimator of the total}
-#'   \item{rel_se}{the estimated relative standard error of the estimator of the total}
-#'   \item{nonnil_tracts}{the number of non-nil tracts (not shown if filter has been applied)}
+#'   \item{estimate}{Estimated total of the target variable.}
+#'   \item{variance}{Estimated variance of the total estimator.}
+#'   \item{rel_se}{Estimated relative standard error of the total estimator.}
+#'   \item{nonnil_tracts}{Number of non-nil tracts. Not shown if filtering has been applied.}
 #' }
 #'
 #' @examples
-#' \dontrun{
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 #' summary(obj);
-#' }
 #'
 #' @method summary NilsEstimate
 #' @export

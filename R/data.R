@@ -1,30 +1,36 @@
-#' Tract sample data
+#' Sample data on cover of lawns from the NILS, 2024.
 #'
-#' These data sets contain sample information on the grassland cover, gathered by the National
-#' Inventories of Landscapes in Sweden (NILS) in 2004. The sample covers the boreal south region of
-#' Sweden (boreal region south of the Dal River).
+#' The dataset includes information collected in the southern boreal region of Sweden (i.e. the
+#' boreal region South of the Dal River).
 #'
-#' The sample is reduced from the original, containing only the two most sparse subsamples, and the
-#' two strata (selection classes/categories) sampled there.
+#' This sample is a reduced version of the original data, containing only the two sparsest
+#' subsamples and the two strata (selection classes/categories) sampled within them.
 #'
 #' @section Conceptual overview of the NILS sampling design:
-#' In NILS, a hierarchical sample of tracts is drawn (primary sampling unit, PSU), where each PSU is
-#' a subset of the previous. A tract consists of 14 x 14 circular plots of 10m radius in a grid
-#' pattern.
+#' In NILS, a hierarchical sampling design is used.
+#' The primary sampling unit is a tract, and in the first step, a large number of tracts are
+#' selected (PSU1).
+#' From the collection PSU1, a smaller sample of tracts is drawn to form PSU2, and this process
+#' continues to subsequent levels.
 #'
-#' In the highest order sample (i.e. largest PSU), some categories (or strata) are identified. All
-#' plots within the tracts of the PSU classifies the plots as belonging to a specific stratum, or
-#' being otherwise deemed unclassified. For each tract and category, a sample of plots are drawn and
-#' surveyed. The process is then repeated for the second largest PSU, and so on.
+#' Each tract consists of a grid of 14 x 14 circular plots, each with a 10 m radius.
+#'
+#' Amongst PSU1, some categories (strata) are identified.
+#' The plots in the tracts are assigned to one of these categories or marked as unclassified
+#' (considered uninteresting at that stage).
+#' Within each tract, a sample of plots is then drawn from each category.
+#'
+#' At lower PSU levels, additional categories are introduced, and previously unclassified plots
+#' are assigned to one of these new categories.
 #'
 #' @format ## `tracts`
 #' A matrix with 300 rows (tracts)
 #' \describe{
 #'   \item{tid}{the tract id number}
-#'   \item{psu}{the id number of the primary sampling unit (PSU) of the tract}
+#'   \item{psu}{the id number of the collection of primary sampling units (PSU) of the tract}
 #' }
 #'
-#' @source <https://www.slu.se/en/Collaborative-Centres-and-Projects/nils/>
+#' @source <https://www.slu.se/om-slu/organisation/institutioner/skoglig-resurshushallning/miljoanalys/nils/>
 #'
 "tracts"
 
@@ -60,7 +66,8 @@
 
 #' @rdname tracts
 #' @format ## `psus`
-#' A length 2 ordered vector of PSU id numbers, ranging from the largest PSU to the smallest PSU
+#' A length 2 ordered vector of PSU collection id numbers, ranging from the largest PSU level to the
+#' smallest PSU level
 "psus"
 
 #' @rdname tracts

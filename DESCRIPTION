@@ -1,23 +1,23 @@
 Package: nilsier
 Type: Package
-Title: Design-based estimators for NILS
+Title: Design-Based Estimators for NILS
 Version: 0.0.2
 Date: 2024-06-19
 Authors@R: c(
-    person("Wilmer", "Prentius", email = "wilmer.prentius@slu.se", role = c("cre"), comment = c(ORCID = "0000-0002-3561-290X"))
+    person("Wilmer", "Prentius", , "wilmer.prentius@slu.se",
+    role = c("aut", "cre"),
+    comment = c(ORCID = "0000-0002-3561-290X"))
     )
-Author:
-    Wilmer Prentius [cre] (ORCID: <https://orcid.org/0000-0002-3561-290X>)
-Maintainer: Wilmer Prentius <wilmer.prentius@slu.se>
 Description: Estimators and variance estimators for the National Inventories of Landscapes in Sweden (NILS) hierarchical sampling design.
-License: AGPL-3 + file LICENSE
+License: AGPL-3
+Encoding: UTF-8
+Language: en-GB
 Depends:
-  R (>= 3.5.0)
+  R (>= 4.2)
 Imports:
   Rcpp (>= 1.0.14)
 LinkingTo:
   Rcpp
-Encoding: UTF-8
 NeedsCompilation: yes
 LazyData: true
 Roxygen: list(markdown = TRUE)

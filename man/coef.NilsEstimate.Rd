@@ -3,40 +3,36 @@
 \name{coef.NilsEstimate}
 \alias{coef.NilsEstimate}
 \alias{vcov.NilsEstimate}
-\title{Estimates of the NilsEstimate}
+\title{Estimates of a NILS estimate}
 \usage{
 \method{coef}{NilsEstimate}(object, ...)
 
 \method{vcov}{NilsEstimate}(object, complete = TRUE, ...)
 }
 \arguments{
-\item{object}{An object of class \code{NilsEstimate}}
+\item{object}{A \code{NilsEstimate} object.}
 
-\item{...}{additional unused arguments}
+\item{...}{Additional arguments (currently unused).}
 
-\item{complete}{If \code{FALSE}, excludes apparent 0-tracts}
+\item{complete}{Logical. If \code{FALSE}, excludes apparent zero-tracts.}
 }
 \value{
-A vector containing the estimate and the variance estimate
+A named vector with the following elements:
 \describe{
-\item{estimate}{the estimate of the total}
-\item{variance}{the estimated variance of the estimator of the total}
+\item{estimate}{Estimated total of the target variable.}
+\item{variance}{Estimated variance of the total estimator.}
 }
 }
 \description{
-Returns a vector of the estimate and variance estimate of the NilsEstimate object.
+Returns a numeric vector of the estimate and variance estimate of a \code{NilsEstimate} object.
 
-Returns the covariance matrix of the NilsEstimate object
+Returns the covariance matrix of a \code{NilsEstimate} object.
 }
 \examples{
-\dontrun{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 coef(obj);
-}
 
-\dontrun{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 vcov(obj);
-}
 
 }
