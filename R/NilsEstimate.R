@@ -110,7 +110,13 @@ NilsEstimate = function(
 #' smallest PSU collection.
 #'
 #' @examples
-#' obj = NilsEstimateBalanced(plots, tracts, tract_auxilliaries, psus, category_psu_map);
+#' obj = NilsEstimateBalanced(
+#'   plots,
+#'   tracts,
+#'   tract_auxilliaries,
+#'   psus,
+#'   category_psu_map
+#' );
 #'
 #' @rdname NilsEstimate
 #' @export
@@ -190,7 +196,13 @@ NilsEstimateBalanced = function(
 #'   tract_id = plots[, 1]
 #' );
 #'
-#' plot_data = PreparePlotData(wide_df, ~tract_id, ~category, ~design_weight, ~grassland_cover);
+#' plot_data = PreparePlotData(
+#'   wide_df,
+#'   ~tract_id,
+#'   ~category,
+#'   ~design_weight,
+#'   ~grassland_cover
+#' );
 #'
 #' @export
 PreparePlotData = function(data, tid, cat, dw, y) {

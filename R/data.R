@@ -6,23 +6,6 @@
 #' This sample is a reduced version of the original data, containing only the two sparsest
 #' subsamples and the two strata (selection classes/categories) sampled within them.
 #'
-#' @section Conceptual overview of the NILS sampling design:
-#' In NILS, a hierarchical sampling design is used.
-#' The primary sampling unit is a tract, and in the first step, a large number of tracts are
-#' selected (PSU1).
-#' From the collection PSU1, a smaller sample of tracts is drawn to form PSU2, and this process
-#' continues to subsequent levels.
-#'
-#' Each tract consists of a grid of 14 x 14 circular plots, each with a 10 m radius.
-#'
-#' Amongst PSU1, some categories (strata) are identified.
-#' The plots in the tracts are assigned to one of these categories or marked as unclassified
-#' (considered uninteresting at that stage).
-#' Within each tract, a sample of plots is then drawn from each category.
-#'
-#' At lower PSU levels, additional categories are introduced, and previously unclassified plots
-#' are assigned to one of these new categories.
-#'
 #' @format ## `tracts`
 #' A matrix with 300 rows (tracts)
 #' \describe{

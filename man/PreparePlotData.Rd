@@ -41,6 +41,12 @@ wide_df = data.frame(
   tract_id = plots[, 1]
 );
 
-plot_data = PreparePlotData(wide_df, ~tract_id, ~category, ~design_weight, ~grassland_cover);
+plot_data = PreparePlotData(
+  wide_df,
+  ~tract_id,
+  ~category,
+  ~design_weight,
+  ~grassland_cover
+);
 
 }

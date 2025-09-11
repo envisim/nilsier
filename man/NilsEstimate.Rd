@@ -106,6 +106,12 @@ smallest PSU collection.
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 
-obj = NilsEstimateBalanced(plots, tracts, tract_auxilliaries, psus, category_psu_map);
+obj = NilsEstimateBalanced(
+  plots,
+  tracts,
+  tract_auxilliaries,
+  psus,
+  category_psu_map
+);
 
 }
