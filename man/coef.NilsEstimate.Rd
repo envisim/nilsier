@@ -2,19 +2,14 @@
 % Please edit documentation in R/NilsEstimate-utils.R
 \name{coef.NilsEstimate}
 \alias{coef.NilsEstimate}
-\alias{vcov.NilsEstimate}
 \title{Estimates of a NILS estimate}
 \usage{
 \method{coef}{NilsEstimate}(object, ...)
-
-\method{vcov}{NilsEstimate}(object, complete = TRUE, ...)
 }
 \arguments{
 \item{object}{A \code{NilsEstimate} object.}
 
 \item{...}{Additional arguments (currently unused).}
-
-\item{complete}{Logical. If \code{FALSE}, excludes apparent zero-tracts.}
 }
 \value{
 A named vector with the following elements:
@@ -25,14 +20,9 @@ A named vector with the following elements:
 }
 \description{
 Returns a numeric vector of the estimate and variance estimate of a \code{NilsEstimate} object.
-
-Returns the covariance matrix of a \code{NilsEstimate} object.
 }
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 coef(obj);
-
-obj = NilsEstimate(plots, tracts, psus, category_psu_map);
-vcov(obj);
 
 }

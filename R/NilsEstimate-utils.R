@@ -40,7 +40,6 @@ coef.NilsEstimate = function(object, ...) {
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 #' vcov(obj);
 #'
-#' @rdname coef.NilsEstimate
 #' @method vcov NilsEstimate
 #' @export
 vcov.NilsEstimate = function(object, complete = TRUE, ...) {
