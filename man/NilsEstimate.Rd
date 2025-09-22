@@ -3,7 +3,7 @@
 \name{NilsEstimate}
 \alias{NilsEstimate}
 \alias{NilsEstimateBalanced}
-\title{Estimate totals using the NILS hierachical design}
+\title{Estimate totals using the NILS hierarchical design}
 \usage{
 NilsEstimate(
   plot_data,
@@ -74,14 +74,14 @@ target variable in the category.}
 }
 }
 \description{
-Estimates the total of some variable surveyed under the NILS hiearchical sampling framework.
+Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
 }
 \details{
 The function combines plot-level observations (\code{plot_data}), tract-level information
 (\code{tract_data}), PSU hierarchy (\code{psus}), and category assignments (\code{category_psu_map}) to estimate
 totals under the NILS sampling design.
 
-\subsection{NilsEstimateBalanced}{
+\subsection{Variance estimation for spatially balanced sampling: \code{NilsEstimateBalanced}}{
 
 In the balanced variant, variance is estimated using a local neighbourhood deviance measure.
 The neighbourhood size defaults to 4 for the smallest PSU level and increases linearly with PSU
@@ -109,7 +109,7 @@ obj = NilsEstimate(plots, tracts, psus, category_psu_map);
 obj = NilsEstimateBalanced(
   plots,
   tracts,
-  tract_auxilliaries,
+  tract_auxiliaries,
   psus,
   category_psu_map
 );

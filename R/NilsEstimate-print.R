@@ -6,7 +6,7 @@
 #' @param x A `NilsEstimate` object.
 #' @param complete Logical. If `FALSE` (default), excludes apparent zero-tracts from the printed
 #' output.
-#' @param ... Additional arguments (currently unusued)
+#' @param ... Additional arguments (currently unused)
 #'
 #' @returns
 #' Invisibly returns the input `NilsEstimate` object.

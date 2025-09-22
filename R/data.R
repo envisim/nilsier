@@ -18,11 +18,11 @@
 "tracts"
 
 #' @rdname tracts
-#' @format ## `tract_auxilliaries`
-#' A matrix with 300 rows (auxilliary information about the tracts)
+#' @format ## `tract_auxiliaries`
+#' A matrix with 300 rows (auxiliary information about the tracts)
 #' \describe{
-#'   \item{x}{longitude of the tract center}
-#'   \item{y}{latitude of the tract center}
+#'   \item{x}{longitude of the tract centre}
+#'   \item{y}{latitude of the tract centre}
 #'   \item{elev_max}{the tract's maximum elevation}
 #'   \item{elev_range}{the tract's elevation range}
 #'   \item{nmd_artificial}{the area of the tract covered by buildings}
@@ -34,7 +34,7 @@
 #'   \item{arable}{the area of the tract covered by arable land}
 #'   \item{pasture}{the area of the tract covered by pasture}
 #' }
-"tract_auxilliaries"
+"tract_auxiliaries"
 
 #' @rdname tracts
 #' @format ## `plots`

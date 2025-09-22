@@ -1,6 +1,5 @@
 \.gitignore
 \.git
-\.\.Rcheck
 \.Rhistory
 
 aux$
@@ -8,8 +7,9 @@ log$
 out$
 png$
 
+^justfile$
 ^CHANGELOG\.md$
 ^LICENSE\.md$
-man-roxygen/
-local-testing/
-test/
+^man-roxygen/
+^test/*
+^build/*

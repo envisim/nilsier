@@ -6,7 +6,7 @@
 \alias{nilsier-package}
 \title{nilsier: Design-Based Estimators for NILS}
 \description{
-Estimators and variance estimators tailored to the NILS hierarchical design (Adler et al. 2020, \url{https://res.slu.se/id/publ/105630}; Grafström et al. 2023, \url{https://res.slu.se/id/publ/128235}). The National Inventories of Landscapes in Sweden (NILS) is a long-term national monitoring program that collects, analyzes and presents data on Swedish nature, covering both common and rare habitats \url{https://www.slu.se/om-slu/organisation/institutioner/skoglig-resurshushallning/miljoanalys/nils/}.
+Estimators and variance estimators tailored to the NILS hierarchical design (Adler et al. 2020, \url{https://res.slu.se/id/publ/105630}; Grafström et al. 2023, \url{https://res.slu.se/id/publ/128235}). The National Inventories of Landscapes in Sweden (NILS) is a long-term national monitoring program that collects, analyses and presents data on Swedish nature, covering both common and rare habitats \url{https://www.slu.se/om-slu/organisation/institutioner/skoglig-resurshushallning/miljoanalys/nils/}.
 }
 \details{
 Estimates are produced per category and tract, and subsequently combined.
@@ -16,7 +16,7 @@ If the PSU collections were drawn using  some spatially balanced design, the var
 assuming OSU sampling of PSUs will overestimate the variance.
 An alternative variance, such as the local mean variance estimator, can be used in order to
 reduce this overestimation somewhat (Grafström & Schelin, 2014).
-\subsection{Conseptual overview of NILS hierachical design}{
+\subsection{Conceptual overview of NILS hierarchical design}{
 
 The primary sampling unit is a tract, and in the first step, a large number of tracts are
 selected (PSU1).

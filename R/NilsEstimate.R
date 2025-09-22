@@ -1,7 +1,7 @@
-#' Estimate totals using the NILS hierachical design
+#' Estimate totals using the NILS hierarchical design
 #'
 #' @description
-#' Estimates the total of some variable surveyed under the NILS hiearchical sampling framework.
+#' Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
 #'
 #' @param plot_data A data frame with information about observations at the plot level.
 #' Must contain (in order):
@@ -82,7 +82,7 @@ NilsEstimate = function(
   ));
 }
 
-#' Estimate totals using the NILS hierachical design, assuming a spatially balanced design
+#' Estimate totals using the NILS hierarchical design, assuming a spatially balanced design
 #'
 #' @param auxiliaries A numeric matrix of auxiliary variables used for balancing. Must have the same
 #' dimensions and order as `tract_data`.
@@ -91,7 +91,7 @@ NilsEstimate = function(
 #' each PSU level.
 #'
 #' @details
-#' ## NilsEstimateBalanced
+#' ## Variance estimation for spatially balanced sampling: `NilsEstimateBalanced`
 #' In the balanced variant, variance is estimated using a local neighbourhood deviance measure.
 #' The neighbourhood size defaults to 4 for the smallest PSU level and increases linearly with PSU
 #' level size.
@@ -113,7 +113,7 @@ NilsEstimate = function(
 #' obj = NilsEstimateBalanced(
 #'   plots,
 #'   tracts,
-#'   tract_auxilliaries,
+#'   tract_auxiliaries,
 #'   psus,
 #'   category_psu_map
 #' );

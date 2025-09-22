@@ -12,7 +12,7 @@
 \item{complete}{Logical. If \code{FALSE} (default), excludes apparent zero-tracts from the printed
 output.}
 
-\item{...}{Additional arguments (currently unusued)}
+\item{...}{Additional arguments (currently unused)}
 }
 \value{
 Invisibly returns the input \code{NilsEstimate} object.

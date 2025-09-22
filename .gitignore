@@ -4,6 +4,7 @@ src/*.so
 src/*.dll
 src/symbols.rds
 test/
+build/
 
 ## R
 .Rproj.user

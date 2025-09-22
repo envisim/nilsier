@@ -11,7 +11,7 @@
 #' An alternative variance, such as the local mean variance estimator, can be used in order to
 #' reduce this overestimation somewhat (Grafström & Schelin, 2014).
 #'
-#' ## Conseptual overview of NILS hierachical design
+#' ## Conceptual overview of NILS hierarchical design
 #' The primary sampling unit is a tract, and in the first step, a large number of tracts are
 #' selected (PSU1).
 #' From the collection PSU1, a smaller sample of tracts is drawn to form PSU2, and this process

@@ -3,7 +3,7 @@
 \docType{data}
 \name{tracts}
 \alias{tracts}
-\alias{tract_auxilliaries}
+\alias{tract_auxiliaries}
 \alias{plots}
 \alias{psus}
 \alias{category_psu_map}
@@ -18,12 +18,12 @@ A matrix with 300 rows (tracts)
 }
 }
 
-\subsection{\code{tract_auxilliaries}}{
+\subsection{\code{tract_auxiliaries}}{
 
-A matrix with 300 rows (auxilliary information about the tracts)
+A matrix with 300 rows (auxiliary information about the tracts)
 \describe{
-\item{x}{longitude of the tract center}
-\item{y}{latitude of the tract center}
+\item{x}{longitude of the tract centre}
+\item{y}{latitude of the tract centre}
 \item{elev_max}{the tract's maximum elevation}
 \item{elev_range}{the tract's elevation range}
 \item{nmd_artificial}{the area of the tract covered by buildings}
@@ -70,7 +70,7 @@ map to.
 \usage{
 tracts
 
-tract_auxilliaries
+tract_auxiliaries
 
 plots
 
