@@ -1,60 +1,70 @@
-#' Summary of the NilsEstimate
+#' Summarize a NILS estimate
 #'
 #' @description
-#' Returns a list of summary statistics of the NilsEstimate object
+#' Produces summary statistics for a [NilsEstimate] object.
 #'
-#' @param obj An object of class `NilsEstimate`
+#' @param object A [NilsEstimate] object.
+#' @param ... Additional arguments (currently unused).
 #'
-#' @details
-#' The returned list has the following names:
-#' - `estimate` for the estimate of the total,
-#' - `variance` for the variance estimate of the total,
-#' - `rel_se` for the relative standard error of the total.
+#' @returns
+#' The returned list has the following components:
+#' \describe{
+#'   \item{estimate}{Estimated total of the target variable.}
+#'   \item{variance}{Estimated variance of the total estimator.}
+#'   \item{rel_se}{Estimated relative standard error of the total estimator.}
+#'   \item{nonnil_tracts}{Number of non-nil tracts. Not shown if filtering has been applied.}
+#' }
 #'
-#' If the data has not been filtered, it also contains:
-#' - `nonnil_tracts` for the number of non-nil tracts
+#' @examples
+#' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+#' summary(obj);
 #'
+#' @method summary NilsEstimate
 #' @export
-summary.NilsEstimate = function(obj) {
+summary.NilsEstimate = function(object, ...) {
   sne = list(
-    estimate = attr(obj, "estimate"),
-    variance = attr(obj, "variance"),
-    rel_se = sqrt(attr(obj, "variance")) / attr(obj, "estimate")
+    estimate = attr(object, "estimate"),
+    variance = attr(object, "variance"),
+    rel_se = sqrt(attr(object, "variance")) / attr(object, "estimate")
   );
   class(sne) = c("summary.NilsEstimate", "NilsEstimate");
 
-  attr(sne, "balanced") = attr(obj, "balanced");
-  attr(sne, "filtered") = attr(obj, "filtered");
+  attr(sne, "balanced") = attr(object, "balanced");
+  attr(sne, "filtered") = attr(object, "filtered");
 
-  if (!attr(obj, "filtered")) {
-    sne$nonnil_tracts = attr(obj, "nonnil_tracts");
+  if (!attr(object, "filtered")) {
+    sne$nonnil_tracts = attr(object, "nonnil_tracts");
   }
 
   return(sne);
 }
 
 #' @rdname summary.NilsEstimate
+#' @method print summary.NilsEstimate
+#'
+#' @param x A [summary.NilsEstimate].
+#'
 #' @export
-print.summary.NilsEstimate = function(obj) {
+print.summary.NilsEstimate = function(x, ...) {
   cat(
-    "Estimated total: ", obj$estimate, "\n",
-    "Estimated SE: ", sqrt(obj$variance), "\n",
-    "Relative SE: ", obj$rel_se, "\n",
+    "Estimated total: ", x$estimate, "\n",
+    "Estimated SE: ", sqrt(x$variance), "\n",
+    "Relative SE: ", x$rel_se, "\n",
     sep = ""
   );
 
   additional = "";
 
-  if (attr(obj, "filtered")) {
+  if (attr(x, "filtered")) {
     additional = paste0(additional, "Filtered: TRUE\n");
   } else {
     cat(
-      "Nonnil tracts: ", obj$nonnil_tracts, "\n",
+      "Nonnil tracts: ", x$nonnil_tracts, "\n",
       sep = ""
     )
   }
 
-  if (attr(obj, "balanced")) {
+  if (attr(x, "balanced")) {
     additional = paste0(additional, "Balanced: TRUE\n");
   }
 
@@ -65,4 +75,6 @@ print.summary.NilsEstimate = function(obj) {
       sep = ""
     )
   }
+
+  invisible(x)
 }

@@ -3,14 +3,14 @@
 \name{NilsEstimate}
 \alias{NilsEstimate}
 \alias{NilsEstimateBalanced}
-\title{Estimate the total}
+\title{Estimate totals using the NILS hierarchical design}
 \usage{
 NilsEstimate(
   plot_data,
   tract_data,
   psus,
   category_psu_map,
-  area = 46390172,
+  area = 46519242.1175867,
   tract_area = 196 * 100 * pi
 )
 
@@ -20,84 +20,98 @@ NilsEstimateBalanced(
   auxiliaries,
   psus,
   category_psu_map,
-  area = 46390172,
+  area = 46519242.1175867,
   tract_area = 196 * 100 * pi,
   size_of_neighbourhood = NULL
 )
 }
 \arguments{
-\item{plot_data}{A data frame containing information about observations.}
+\item{plot_data}{A data frame with information about observations at the plot level.
+Must contain (in order):
+\enumerate{
+\item The tract ID (integer) of the parent tract.
+\item The category ID (integer) recorded for the plot.
+\item The design weight (double) for the plot, conditional on the tract.
+\item The observed value of the target variable (double).
+}}
 
-\item{tract_data}{A matrix containing tract ids and the psus they belong to.}
+\item{tract_data}{A matrix with information about all sampled tracts,
+including those where no relevant categories were found.
+Must contain (in order):
+\enumerate{
+\item The tract ID (integer) of each sampled tract.
+\item The PSU collection ID (integer) of the smallest PSU that contains the tract.
+}}
 
-\item{psus}{An ordered vector of psus, ranging from largest to smallest.}
+\item{psus}{An ordered vector of PSU levels, from largest to smallest.}
 
-\item{category_psu_map}{A matrix containing categories and the psus they map to.}
+\item{category_psu_map}{A matrix describing the categories used in the design.
+Must contain (in order):
+\enumerate{
+\item The category ID (integer), as used in \code{plot_data}.
+\item The PSU collection ID (integer) of the smallest PSU in which the category is sampled.
+}}
 
-\item{area}{The size of the area frame.}
+\item{area}{The size of the area frame. Typically larger than the actual area of interest.}
 
-\item{tract_area}{The area of a tract.}
+\item{tract_area}{The area of a tract, expressed in the same units as the target variable.}
 
-\item{auxiliaries}{A (double) matrix of auxiliary information used in the balancing.
-Must match the size (and order) of tract_data.}
+\item{auxiliaries}{A numeric matrix of auxiliary variables used for balancing. Must have the same
+dimensions and order as \code{tract_data}.}
+
+\item{size_of_neighbourhood}{An optional numeric vector specifying the neighbourhood size for
+each PSU level.}
 }
 \value{
-A NilsEstimate object (list).
+A \code{NilsEstimate} object, essentially a data frame with one row per category and the
+following columns:
+\describe{
+\item{Cat. ID}{The category ID number.}
+\item{Est. total}{The estimated total of the target variable within the category.}
+\item{Est. variance}{The estimated variance of the total estimator within the category.}
+\item{Positive tracts}{The number of tracts with at least one positive value of the
+target variable in the category.}
+}
 }
 \description{
-Estimates the total of some variable, surveyed using the NILS hiearchical design framework.
+Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
 }
 \details{
-\code{category_psu_map} contains information about the categories used in the
-design.
-The object should be a matrix with the following columns (in order):
-\itemize{
-\item the category id (integer), as used in \code{plot_data};
-\item the psu id (integer) of the largest psu that the category begins to be
-sampled in.
+The function combines plot-level observations (\code{plot_data}), tract-level information
+(\code{tract_data}), PSU hierarchy (\code{psus}), and category assignments (\code{category_psu_map}) to estimate
+totals under the NILS sampling design.
+
+\subsection{Variance estimation for spatially balanced sampling: \code{NilsEstimateBalanced}}{
+
+In the balanced variant, variance is estimated using a local neighbourhood deviance measure.
+The neighbourhood size defaults to 4 for the smallest PSU level and increases linearly with PSU
+level size.
+
+Covariance between categories belonging to different PSU levels are measured over their
+intersection, i.e. on the smaller PSU collections.
+Consequently, the smaller PSU collection also determines the local neighbourhood size.
+
+It is possible to provide a matrix as \code{psus} instead of a vector. This matrix should contain:
+\enumerate{
+\item PSU IDs, ordered from largest to smallest (by PSU size).
+\item The neighbourhood size for each PSU.
 }
 
-\code{tract_data} contains information about all sampled tracts, even those where
-no interesting category was found.
-The object should be a matrix with the following columns (in order):
-\itemize{
-\item the tract id (integer) of the sampled tracts;
-\item the psu id (integer) of the psu that the tract were sampled in.
-}
-
-\code{plot_data} contains information about observed values on plot level. The
-object can contain multiple records per plot.
-The object should be a data frame with the following columns (in order):
-\itemize{
-\item the tract id (integer) of the parent tract;
-\item the category id (integer) of the category recorded for the plot;
-\item the design weight (double) for the plot, conditioned on the tract;
-\item the value of the target variable (double).
-}
-
-The functions returns a NilsEstimate object (list) with the following names:
-\itemize{
-\item \code{estimate}: the estimate of the total;
-\item \code{variance}: the variance estimate of the total estimate;
-\item \code{cat_estimates}: the estimates per category;
-\item \code{cat_covmat}: the estimated covariance matrix of the per category estimates.
-}
-
-\subsection{NilsEstimateBalanced}{
-
-For the balanced variant, the variance is calculated by using a local
-neighbourhood deviance measure.
-The size of this local neighbourhood defaults to 4 for the smallest PSUs, and
-increases linearly by size.
-
-As the covariance between two categories belonging to different psus are
-measured on the intersect between these categories, e.g. on the smaller of
-the psus, the smaller psu also decides the size of the local neighbourhood.
-
-It is possible to provide custom neighbourhood sizes by adding a third column
-to \code{psu_sizes}:
-\itemize{
-\item size of neighbourhood
+If \code{psus} is provided as a vector, the neighbourhood size of PSU \eqn{k} defaults to
+\deqn{4 \frac{n_{k}}{n_{(0)}} ,}
+where \eqn{n_{k}} is the size of PSU collection \eqn{k}, and \eqn{n_{(0)}} is the size of the
+smallest PSU collection.
 }
 }
+\examples{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+
+obj = NilsEstimateBalanced(
+  plots,
+  tracts,
+  tract_auxiliaries,
+  psus,
+  category_psu_map
+);
+
 }

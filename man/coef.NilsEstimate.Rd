@@ -2,20 +2,27 @@
 % Please edit documentation in R/NilsEstimate-utils.R
 \name{coef.NilsEstimate}
 \alias{coef.NilsEstimate}
-\alias{vcov.NilsEstimate}
-\title{Estimates of the NilsEstimate}
+\title{Estimates of a NILS estimate}
 \usage{
-\method{coef}{NilsEstimate}(obj)
-
-\method{vcov}{NilsEstimate}(obj, complete = TRUE)
+\method{coef}{NilsEstimate}(object, ...)
 }
 \arguments{
-\item{obj}{An object of class \code{NilsEstimate}}
+\item{object}{A \link{NilsEstimate} object.}
 
-\item{complete}{If \code{FALSE}, excludes apparent 0-tracts}
+\item{...}{Additional arguments (currently unused).}
+}
+\value{
+A named vector with the following elements:
+\describe{
+\item{estimate}{Estimated total of the target variable.}
+\item{variance}{Estimated variance of the total estimator.}
+}
 }
 \description{
-Returns a vector of the estimate and variance estimate of the NilsEstimate object.
+Accesses the estimate and variance estimate of a \link{NilsEstimate} object.
+}
+\examples{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+coef(obj);
 
-Returns the covariance matrix of the NilsEstimate object
 }

@@ -3,28 +3,33 @@
 \name{summary.NilsEstimate}
 \alias{summary.NilsEstimate}
 \alias{print.summary.NilsEstimate}
-\title{Summary of the NilsEstimate}
+\title{Summarize a NILS estimate}
 \usage{
-\method{summary}{NilsEstimate}(obj)
+\method{summary}{NilsEstimate}(object, ...)
 
-\method{print}{summary.NilsEstimate}(obj)
+\method{print}{summary.NilsEstimate}(x, ...)
 }
 \arguments{
-\item{obj}{An object of class \code{NilsEstimate}}
+\item{object}{A \link{NilsEstimate} object.}
+
+\item{...}{Additional arguments (currently unused).}
+
+\item{x}{A \link{summary.NilsEstimate}.}
+}
+\value{
+The returned list has the following components:
+\describe{
+\item{estimate}{Estimated total of the target variable.}
+\item{variance}{Estimated variance of the total estimator.}
+\item{rel_se}{Estimated relative standard error of the total estimator.}
+\item{nonnil_tracts}{Number of non-nil tracts. Not shown if filtering has been applied.}
+}
 }
 \description{
-Returns a list of summary statistics of the NilsEstimate object
+Produces summary statistics for a \link{NilsEstimate} object.
 }
-\details{
-The returned list has the following names:
-\itemize{
-\item \code{estimate} for the estimate of the total,
-\item \code{variance} for the variance estimate of the total,
-\item \code{rel_se} for the relative standard error of the total.
-}
+\examples{
+obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+summary(obj);
 
-If the data has not been filtered, it also contains:
-\itemize{
-\item \code{nonnil_tracts} for the number of non-nil tracts
-}
 }

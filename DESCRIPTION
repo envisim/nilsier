@@ -1,19 +1,27 @@
 Package: nilsier
 Type: Package
-Title: Design-based estimators for NILS
-Version: 0.0.2
-Date: 2024-06-19
-Author: Wilmer Prentius
-Maintainer: Wilmer Prentius <wilmer.prentius@slu.se>
-Description: One paragraph description of what the package does as one
-        or more full sentences.
-License: --
-Imports:
-  Rcpp (>= 1.0.12)
-LinkingTo:
-  Rcpp
+Title: Design-Based Estimators for NILS
+Version: 0.1.1
+Authors@R: c(
+    person("Wilmer", "Prentius", , "wilmer.prentius@slu.se",
+    role = c("aut", "cre"),
+    comment = c(ORCID = "0000-0002-3561-290X"))
+    )
+Description:
+    Estimators and variance estimators tailored to the NILS hierarchical design (Adler et al. 2020, <https://res.slu.se/id/publ/105630>; Grafström et al. 2023, <https://res.slu.se/id/publ/128235>).
+     The National Inventories of Landscapes in Sweden (NILS) is a long-term national monitoring program that collects, analyses and presents data on Swedish nature, covering both common and rare habitats <https://www.slu.se/om-slu/organisation/institutioner/skoglig-resurshushallning/miljoanalys/nils/>.
+License: AGPL-3
 Encoding: UTF-8
+Language: en-GB
+Depends:
+    R (>= 4.2)
+Imports:
+    Rcpp (>= 1.0.14)
+LinkingTo:
+    Rcpp
+URL:
+    https://github.com/envisim/nilsier/
 NeedsCompilation: yes
+LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
-
+RoxygenNote: 7.3.2

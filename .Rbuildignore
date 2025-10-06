@@ -1,0 +1,15 @@
+\.gitignore
+\.git
+\.Rhistory
+
+aux$
+log$
+out$
+png$
+
+^justfile$
+^CHANGELOG\.md$
+^LICENSE\.md$
+^man-roxygen/
+^test/*
+^build/*

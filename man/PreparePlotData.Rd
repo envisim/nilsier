@@ -2,10 +2,51 @@
 % Please edit documentation in R/NilsEstimate.R
 \name{PreparePlotData}
 \alias{PreparePlotData}
-\title{Prepare plot data}
+\title{Prepare plot-level data}
 \usage{
 PreparePlotData(data, tid, cat, dw, y)
 }
+\arguments{
+\item{data}{A data.frame containing plot-level information.}
+
+\item{tid}{A formula specifying the column containing tract IDs.}
+
+\item{cat}{A formula specifying the column containing category IDs.}
+
+\item{dw}{A formula specifying the column containing design weights.}
+
+\item{y}{A formula specifying the column containing the variable of interest.}
+}
+\value{
+A data frame with the required column order for use as \code{plot_data}:
+\enumerate{
+\item Tract ID (integer).
+\item Category ID (integer).
+\item Design weight (double).
+\item Value of the variable of interest (double).
+}
+}
 \description{
-Takes the column names as formulas, and returns a correctly ordered data frame.
+Reorders and extracts columns from a data frame to create a valid \code{plot_data} object.
+Column names are supplied as formulas for convenience.
+}
+\examples{
+wide_df = data.frame(
+  variable_y = runif(16),
+  variable_x = runif(16),
+  variable_z = runif(16),
+  grassland_cover = plots[, 4],
+  design_weight = plots[, 3],
+  category = plots[, 2],
+  tract_id = plots[, 1]
+);
+
+plot_data = PreparePlotData(
+  wide_df,
+  ~tract_id,
+  ~category,
+  ~design_weight,
+  ~grassland_cover
+);
+
 }

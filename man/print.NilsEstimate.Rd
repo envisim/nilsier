@@ -2,13 +2,21 @@
 % Please edit documentation in R/NilsEstimate-print.R
 \name{print.NilsEstimate}
 \alias{print.NilsEstimate}
-\title{Print}
+\title{Print a NILS estimate}
 \usage{
-\method{print}{NilsEstimate}(obj, complete = TRUE)
+\method{print}{NilsEstimate}(x, complete = TRUE, ...)
 }
 \arguments{
-\item{complete}{If \code{FALSE}, excludes apparent 0-tracts}
+\item{x}{A \link{NilsEstimate} object.}
+
+\item{complete}{Logical. If \code{FALSE} (default), excludes apparent zero-tracts from the printed
+output.}
+
+\item{...}{Additional arguments (currently unused)}
+}
+\value{
+Invisibly returns the input \link{NilsEstimate} object.
 }
 \description{
-Print
+Prints a summary of a \link{NilsEstimate} object.
 }

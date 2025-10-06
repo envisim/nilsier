@@ -18,11 +18,13 @@
 
 .TrueIfIntegerStopIfNaN = function(vec, name = "input") {
   .StopIfNaN(vec, name);
+  .StopIfNa(vec, name);
   return(storage.mode(vec) == "integer");
 }
 
 .TrueIfDoubleStopIfNaN = function(vec, name = "input") {
   .StopIfNaN(vec, name);
+  .StopIfNa(vec, name);
   return(storage.mode(vec) == "double");
 }
 
@@ -55,7 +57,7 @@
     return(psus);
   }
 
-  .TrueIfNumericStopIfNaN(size_of_neighbourhood, "size_of_neighbourhood");
+  .TrueIfIntegerStopIfNaN(size_of_neighbourhood, "size_of_neighbourhood");
 
   if (length(size_of_neighbourhood) != nrow(psus)) {
     stop("psus and size_of_neighbourhood does not match");
@@ -124,7 +126,7 @@
   return(plot_data);
 }
 
-.PrepareArea = function(area, .name = "area") {
+.PrepareArea = function(area, name = "area") {
   if (.TrueIfIntegerStopIfNaN(area, name)) {
     storage.mode(area) = "double";
   }
@@ -136,14 +138,14 @@
   return(area);
 }
 
-.PrepareAuxiliaries = function(auxiliaries) {
+.PrepareAuxiliaries = function(auxiliaries, nobs) {
   auxiliaries = t(as.matrix(auxiliaries));
 
   if (.TrueIfIntegerStopIfNaN(auxiliaries, "auxiliaries")) {
     storage.mode(auxiliaries) = "double";
   }
 
-  if (ncol(auxiliaries) != nrow(tract_data) || nrow(auxiliaries) == 0) {
+  if (ncol(auxiliaries) != nobs || nrow(auxiliaries) == 0) {
     stop("auxiliaries needs to be a non empty matrix with the same size as tract_data");
   }
 
