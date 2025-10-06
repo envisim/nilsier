@@ -10,7 +10,7 @@ efilter(obj, ...)
 \method{efilter}{NilsEstimate}(obj, psus = NULL, categories = NULL, ...)
 }
 \arguments{
-\item{obj}{A \code{NilsEstimate} object.}
+\item{obj}{A \link{NilsEstimate} object.}
 
 \item{...}{Additional arguments (currently unused)}
 
@@ -18,8 +18,11 @@ efilter(obj, ...)
 
 \item{categories}{An optional vector of the category IDs to keep.}
 }
+\value{
+a filtered \link{NilsEstimate} object.
+}
 \description{
-Filters a \code{NilsEstimate} object by PSU level or category.
+Filters a \link{NilsEstimate} object by PSU level or category.
 }
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);

@@ -1,9 +1,9 @@
 #' Estimates of a NILS estimate
 #'
 #' @description
-#' Returns a numeric vector of the estimate and variance estimate of a `NilsEstimate` object.
+#' Accesses the estimate and variance estimate of a [NilsEstimate] object.
 #'
-#' @param object A `NilsEstimate` object.
+#' @param object A [NilsEstimate] object.
 #' @param ... Additional arguments (currently unused).
 #'
 #' @returns A named vector with the following elements:
@@ -30,11 +30,13 @@ coef.NilsEstimate = function(object, ...) {
 #' Covariance matrix for NILS category estimates
 #'
 #' @description
-#' Returns the covariance matrix of a `NilsEstimate` object.
+#' Accesses the covariance matrix of a [NilsEstimate] object.
 #'
-#' @param object A `NilsEstimate` object.
+#' @param object A [NilsEstimate] object.
 #' @param complete Logical. If `FALSE`, excludes apparent zero-tracts.
 #' @param ... Additional arguments (currently unused).
+#'
+#' @returns the covariance matrix of the [NilsEstimate] object.
 #'
 #' @examples
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);

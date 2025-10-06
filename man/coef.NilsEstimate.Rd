@@ -7,7 +7,7 @@
 \method{coef}{NilsEstimate}(object, ...)
 }
 \arguments{
-\item{object}{A \code{NilsEstimate} object.}
+\item{object}{A \link{NilsEstimate} object.}
 
 \item{...}{Additional arguments (currently unused).}
 }
@@ -19,7 +19,7 @@ A named vector with the following elements:
 }
 }
 \description{
-Returns a numeric vector of the estimate and variance estimate of a \code{NilsEstimate} object.
+Accesses the estimate and variance estimate of a \link{NilsEstimate} object.
 }
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);

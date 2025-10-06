@@ -1,12 +1,12 @@
 #' Summarize a NILS estimate
 #'
 #' @description
-#' Produces summary statistics for a `NilsEstimate` object.
+#' Produces summary statistics for a [NilsEstimate] object.
 #'
-#' @param object,x A `NilsEstimate` object.
+#' @param object A [NilsEstimate] object.
 #' @param ... Additional arguments (currently unused).
 #'
-#' @details
+#' @returns
 #' The returned list has the following components:
 #' \describe{
 #'   \item{estimate}{Estimated total of the target variable.}
@@ -41,6 +41,9 @@ summary.NilsEstimate = function(object, ...) {
 
 #' @rdname summary.NilsEstimate
 #' @method print summary.NilsEstimate
+#'
+#' @param x A [summary.NilsEstimate].
+#'
 #' @export
 print.summary.NilsEstimate = function(x, ...) {
   cat(
@@ -72,4 +75,6 @@ print.summary.NilsEstimate = function(x, ...) {
       sep = ""
     )
   }
+
+  invisible(x)
 }

@@ -7,14 +7,17 @@
 \method{vcov}{NilsEstimate}(object, complete = TRUE, ...)
 }
 \arguments{
-\item{object}{A \code{NilsEstimate} object.}
+\item{object}{A \link{NilsEstimate} object.}
 
 \item{complete}{Logical. If \code{FALSE}, excludes apparent zero-tracts.}
 
 \item{...}{Additional arguments (currently unused).}
 }
+\value{
+the covariance matrix of the \link{NilsEstimate} object.
+}
 \description{
-Returns the covariance matrix of a \code{NilsEstimate} object.
+Accesses the covariance matrix of a \link{NilsEstimate} object.
 }
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);

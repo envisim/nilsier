@@ -7,7 +7,7 @@
 \method{print}{NilsEstimate}(x, complete = TRUE, ...)
 }
 \arguments{
-\item{x}{A \code{NilsEstimate} object.}
+\item{x}{A \link{NilsEstimate} object.}
 
 \item{complete}{Logical. If \code{FALSE} (default), excludes apparent zero-tracts from the printed
 output.}
@@ -15,8 +15,8 @@ output.}
 \item{...}{Additional arguments (currently unused)}
 }
 \value{
-Invisibly returns the input \code{NilsEstimate} object.
+Invisibly returns the input \link{NilsEstimate} object.
 }
 \description{
-Prints a summary of a \code{NilsEstimate} object.
+Prints a summary of a \link{NilsEstimate} object.
 }

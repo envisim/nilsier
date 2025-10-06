@@ -10,14 +10,13 @@
 \method{print}{summary.NilsEstimate}(x, ...)
 }
 \arguments{
-\item{object, x}{A \code{NilsEstimate} object.}
+\item{object}{A \link{NilsEstimate} object.}
 
 \item{...}{Additional arguments (currently unused).}
+
+\item{x}{A \link{summary.NilsEstimate}.}
 }
-\description{
-Produces summary statistics for a \code{NilsEstimate} object.
-}
-\details{
+\value{
 The returned list has the following components:
 \describe{
 \item{estimate}{Estimated total of the target variable.}
@@ -25,6 +24,9 @@ The returned list has the following components:
 \item{rel_se}{Estimated relative standard error of the total estimator.}
 \item{nonnil_tracts}{Number of non-nil tracts. Not shown if filtering has been applied.}
 }
+}
+\description{
+Produces summary statistics for a \link{NilsEstimate} object.
 }
 \examples{
 obj = NilsEstimate(plots, tracts, psus, category_psu_map);

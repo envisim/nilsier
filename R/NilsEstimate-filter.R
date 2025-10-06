@@ -7,12 +7,14 @@ efilter = function(obj, ...) {
 #' Filter NILS estimates
 #'
 #' @description
-#' Filters a `NilsEstimate` object by PSU level or category.
+#' Filters a [NilsEstimate] object by PSU level or category.
 #'
-#' @param obj A `NilsEstimate` object.
+#' @param obj A [NilsEstimate] object.
 #' @param psus An optional vector of PSU IDs to keep.
 #' @param categories An optional vector of the category IDs to keep.
 #' @param ... Additional arguments (currently unused)
+#'
+#' @returns a filtered [NilsEstimate] object.
 #'
 #' @examples
 #' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
