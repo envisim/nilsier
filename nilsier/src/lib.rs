@@ -14,26 +14,18 @@
 //! Sweden (NILS)
 
 pub mod category;
-mod macros;
 pub mod psu;
 pub mod tract;
-mod utils;
 
-use std::fmt::{
-    Display,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::Display;
+use std::hash::Hash;
 use std::num::{
     NonZeroU32,
     NonZeroUsize,
 };
 use std::ops::Range;
 
-use anyhow::{
-    Result,
-    ensure,
-};
+use category::CatError;
 use envisim_utils::kd_tree::Tree;
 use envisim_utils::kd_tree::searcher::KNearestNeighbourSearcher;
 use envisim_utils::matrix::{
@@ -41,64 +33,65 @@ use envisim_utils::matrix::{
     PointSet,
 };
 use envisim_utils::sampling_options::SpreadingOptions;
+use num_traits::ToPrimitive;
+use psu::PsuHeader;
 use rustc_hash::{
     FxBuildHasher,
     FxHashMap,
 };
+use thiserror::Error;
+use tract::TractError;
 
 use crate::category::{
-    CatId,
     CatIdPair,
     CategoryStore,
 };
 use crate::psu::{
     PsuData,
     PsuError,
-    PsuId,
     PsuStore,
 };
 use crate::tract::{
     Area,
     Tract,
     TractHeaderEntry,
-    TractId,
     TractStore,
     TractValueEntry,
 };
 
 #[non_exhaustive]
-#[derive(Debug, Clone, Copy)]
+#[derive(Error, Debug, Clone)]
 pub enum NilsError {
+    #[error("no categories have been added")]
     NoCategoriesAdded,
+    #[error(transparent)]
+    Psu(#[from] PsuError),
+    #[error(transparent)]
+    Category(#[from] CatError),
+    #[error(transparent)]
+    Tract(#[from] TractError),
 }
-#[expect(clippy::absolute_paths, reason = "conflict with anyhow")]
-impl std::error::Error for NilsError {}
-impl Display for NilsError {
-    #[expect(clippy::enum_glob_use, reason = "simple function")]
-    #[inline]
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        use NilsError::*;
-        match self {
-            NoCategoriesAdded => write!(f, "categories must be added"),
-        }
-    }
-}
+/// Shorthand for `Result` with [`NilsError`] error type.
+type NilsResult<T> = Result<T, NilsError>;
 
 /// Contains information of covariance between category id-pairs
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct NilsCovariance {
+pub struct NilsCovariance<CID> {
     /// Store of category-pairs and their respective covariance.
-    cov_mat: FxHashMap<CatIdPair, f64>,
+    cov_mat: FxHashMap<CatIdPair<CID>, f64>,
     /// Number of categories. `cov_mat` should be of length `n_cats * (n_cats + 1) / 2`.
     n_cats: NonZeroUsize,
 }
-impl NilsCovariance {
+impl<CID> NilsCovariance<CID> {
     /// Constructs a new covariance storage from `psu_store`
     /// # Errors
     /// Returns an error if the `psu_store` doesn't contain any categories.
     #[inline]
-    fn from_psustore(psu_store: &PsuStore) -> Result<Self> {
+    fn from_psustore<PID>(psu_store: &PsuStore<PID, CID>) -> NilsResult<Self>
+    where
+        CID: Copy + Hash + Ord,
+    {
         let n_cats =
             NonZeroUsize::new(psu_store.iter().map(PsuData::categories_len).sum::<usize>())
                 .ok_or(NilsError::NoCategoriesAdded)?;
@@ -110,8 +103,7 @@ impl NilsCovariance {
         let mut iter = psu_store.category_iter();
         while let Some((cats_small, _)) = iter.next() {
             for (cats_large, _) in iter.clone() {
-                let cats = CatIdPair::new(cats_small, cats_large);
-                cov_mat.insert(cats, 0.0);
+                cov_mat.insert((cats_small, cats_large).into(), 0.0);
             }
         }
 
@@ -120,18 +112,20 @@ impl NilsCovariance {
     /// Returns the covariance between a `cat_pair`.
     #[must_use]
     #[inline]
-    pub fn get<P>(&self, cat_pair: P) -> Option<f64>
+    pub fn get<PAIR>(&self, cat_pair: PAIR) -> Option<f64>
     where
-        P: Into<CatIdPair>,
+        CID: Hash + Eq,
+        PAIR: Into<CatIdPair<CID>>,
     {
         self.cov_mat.get(&cat_pair.into()).copied()
     }
     /// Returns a mutable reference to the covariance between a `cat_pair`.
     #[must_use]
     #[inline]
-    pub fn get_mut<P>(&mut self, cat_pair: P) -> Option<&mut f64>
+    pub fn get_mut<PAIR>(&mut self, cat_pair: PAIR) -> Option<&mut f64>
     where
-        P: Into<CatIdPair>,
+        CID: Hash + Eq,
+        PAIR: Into<CatIdPair<CID>>,
     {
         self.cov_mat.get_mut(&cat_pair.into())
     }
@@ -140,8 +134,11 @@ impl NilsCovariance {
     #[expect(clippy::integer_division, reason = "have exact solution")]
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn to_matrix(&self) -> (Matrix<f64>, Vec<CatId>) {
-        let mut cats: Vec<CatId> = self.cov_mat.keys().map(CatIdPair::get_a).collect();
+    pub fn to_matrix(&self) -> (Matrix<f64>, Vec<CID>)
+    where
+        CID: Copy + Hash + Ord,
+    {
+        let mut cats: Vec<CID> = self.cov_mat.keys().map(CatIdPair::get_a).copied().collect();
         cats.sort();
         cats.dedup();
         assert_eq!(
@@ -164,41 +161,49 @@ impl NilsCovariance {
         (cm, cats)
     }
 }
-impl From<NilsCovariance> for Matrix<f64> {
+impl<CID> From<NilsCovariance<CID>> for Matrix<f64>
+where
+    CID: Copy + Hash + Ord,
+{
     #[inline]
-    fn from(value: NilsCovariance) -> Matrix<f64> { value.to_matrix().0 }
+    fn from(value: NilsCovariance<CID>) -> Matrix<f64> { value.to_matrix().0 }
 }
 
 /// A store of Nils PSUs and tracts
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct Nils {
+pub struct Nils<PID, CID, TID> {
     /// PSUs
-    psus: PsuStore,
+    psus: PsuStore<PID, CID>,
     /// Tracts
-    tracts: TractStore,
+    tracts: TractStore<TID, PID, CID>,
 }
-impl Nils {
+impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// Initialise with psus and sizes
+    /// # Errors
+    /// Returns an error if the iterators does not match in size.
     #[inline]
-    pub fn new<I, J>(psus: I, nn_sizes: Option<J>, capacity: usize) -> Self
+    pub fn new<I, J>(psus: I, nn_sizes: Option<J>, capacity: usize) -> NilsResult<Self>
     where
-        I: IntoIterator<Item = PsuData>,
-        J: IntoIterator<Item = NonZeroU32>,
+        PID: Ord,
+        I: ExactSizeIterator<Item = PsuHeader<PID>>,
+        J: ExactSizeIterator<Item = NonZeroU32>,
     {
-        let psus = PsuStore::new(psus, nn_sizes);
+        let psus = PsuStore::new(psus, nn_sizes)?;
         let tracts = TractStore::with_capactity(capacity);
-        Self { psus, tracts }
+        Ok(Self { psus, tracts })
     }
     /// Initialise categories-psu maps
     /// # Errors
     /// Returns an error if any category duplicates are found.
     #[inline]
-    pub fn add_categories<I>(mut self, categories: I) -> Result<Self>
+    pub fn add_categories_to_psu<I>(mut self, psu_id: &PID, categories: I) -> NilsResult<Self>
     where
-        I: IntoIterator<Item = (CatId, PsuId)>,
+        PID: Display + Eq,
+        CID: Display + Ord,
+        I: ExactSizeIterator<Item = CID>,
     {
-        for (cat_id, psu_id) in categories {
+        for cat_id in categories {
             self.psus.insert_category(psu_id, cat_id)?;
         }
         Ok(self)
@@ -208,32 +213,34 @@ impl Nils {
     /// Returns an error if the `area` cannot be constructed, if a PSU ID is not found, or if a
     /// tract ID duplicate is found.
     #[inline]
-    pub fn add_tracts<I, A>(mut self, tracts: I, area: A) -> Result<Self>
+    pub fn add_tracts<I, A>(mut self, tracts: I, area: A) -> NilsResult<Self>
     where
-        I: IntoIterator<Item = TractHeaderEntry>,
-        A: TryInto<Area, Error = anyhow::Error>,
+        PID: Display + Eq,
+        TID: Copy + Display + Eq + Hash,
+        I: IntoIterator<Item = TractHeaderEntry<TID, PID>>,
+        A: TryInto<Area, Error = TractError>,
     {
         let area = area.try_into()?;
         for tract in tracts {
             // Assert that the psu is valid
-            ensure!(
-                self.psus.get_psu(tract.psu_id()).is_ok(),
-                PsuError::PsuIdNotFound(tract.psu_id())
-            );
+            if self.psus.get_psu(tract.psu_id()).is_none() {
+                return Err(PsuError::PsuIdNotFound(tract.psu_id().to_string()).into());
+            }
 
             // Insert and replace
             self.tracts.insert(Tract::new(tract, area))?;
         }
-
         Ok(self)
     }
     /// Add tract value entries. Does not check if category exists.
     /// # Errors
     /// Returns an error if a tract ID cannot be found.
     #[inline]
-    pub fn add_value_entries<I>(&mut self, tract_entries: I) -> Result<()>
+    pub fn add_value_entries<I>(&mut self, tract_entries: I) -> NilsResult<()>
     where
-        I: IntoIterator<Item = TractValueEntry>,
+        CID: Copy + Ord,
+        TID: Copy + Display + Eq + Hash,
+        I: IntoIterator<Item = TractValueEntry<TID, CID>>,
     {
         for tract in tract_entries {
             self.tracts.add_value_from_entry(tract)?;
@@ -244,11 +251,15 @@ impl Nils {
     /// Estimates totals per category
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn estimate_per_category(&self, frame_area: Area) -> CategoryStore {
-        let mut v: CategoryStore = self
+    pub fn estimate_per_category(&self, frame_area: Area) -> CategoryStore<CID>
+    where
+        CID: Copy + Ord,
+    {
+        let mut v: CategoryStore<CID> = self
             .psus
             .category_iter()
             .map(|(cat_id, _)| cat_id)
+            .copied()
             .collect();
 
         for (_, tract) in self.tracts.iter() {
@@ -271,9 +282,13 @@ impl Nils {
     /// Sorts the `tract_ids` and constructs tract ranges over the psus
     #[must_use]
     #[inline]
-    fn tract_ranges(&self, tract_ids: &mut [TractId]) -> Vec<(PsuId, Range<usize>)> {
+    fn tract_ranges(&self, tract_ids: &mut [TID]) -> Vec<(PID, Range<usize>)>
+    where
+        PID: Copy + Eq,
+        TID: Eq + Hash,
+    {
         // Sort tract ids by psu size
-        tract_ids.sort_unstable_by(|&a, &b| {
+        tract_ids.sort_unstable_by(|a, b| {
             let idx_a = self
                 .psus
                 .order_of_psu(self.tracts.get(a).expect("tract id to exist").psu_id())
@@ -296,19 +311,19 @@ impl Nils {
             if rest < tract_ids.len()
                 && self
                     .tracts
-                    .get(tract_ids[rest])
+                    .get(&tract_ids[rest])
                     .expect("tract id to exist")
                     .psu_id()
                     == psu_id
             {
                 let end = rest
-                    + tract_ids[rest..].partition_point(|&tid| {
+                    + tract_ids[rest..].partition_point(|tid| {
                         self.tracts.get(tid).expect("tract id to exist").psu_id() == psu_id
                     });
-                ranges.push((psu_id, rest..end));
+                ranges.push((*psu_id, rest..end));
                 rest = end;
             } else {
-                ranges.push((psu_id, rest..rest));
+                ranges.push((*psu_id, rest..rest));
             }
         }
 
@@ -320,21 +335,24 @@ impl Nils {
     /// invalid.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn covariance_estimate<A>(&self, frame_area: A) -> Result<NilsCovariance>
+    pub fn covariance_estimate<A>(&self, frame_area: A) -> NilsResult<NilsCovariance<CID>>
     where
-        A: TryInto<Area, Error = anyhow::Error>,
+        PID: Copy + Eq,
+        CID: Copy + Hash + Ord,
+        TID: Copy + Eq + Display + Hash,
+        A: TryInto<Area, Error = TractError>,
     {
         let frame_area = frame_area.try_into()?;
         // Prepare covariance matrix structure
         let mut cov_mat = NilsCovariance::from_psustore(&self.psus)?;
         // Prepare category sum container
-        let mut sums: CategoryStore = self
+        let mut sums: CategoryStore<CID> = self
             .psus
             .category_iter()
-            .map(|(cat_id, _)| cat_id)
+            .map(|(cat_id, _)| *cat_id)
             .collect();
         // Get vector of tract ids
-        let mut tract_ids: Vec<TractId> = self.tracts.iter().map(|(&tid, _)| tid).collect();
+        let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(tid, _)| *tid).collect();
         let tract_ranges = self.tract_ranges(&mut tract_ids);
 
         // loop from smallest to largest psu
@@ -344,34 +362,34 @@ impl Nils {
         // the tracts of this cat, and then comparing to all larger categories
         for (psu_id, tract_range) in tract_ranges {
             // Successively add to the totals.
-            for &tract_id in &tract_ids[tract_range.clone()] {
+            for tract_id in &tract_ids[tract_range.clone()] {
                 let tract = self.tracts.get(tract_id).expect("tract id to exist");
                 tract.totals().iter().for_each(|&ct| {
                     sums.add_value(ct);
                 });
             }
 
-            let psu = self.psus.get_psu(psu_id).expect("psu id to exist");
-            let psu_size = f64::from(psu.size().get());
+            let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
+            let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
             let area_frac = frame_area.get() / psu_size;
 
             // Outer loop of cats from current psu
             for curr_cat in psu.categories_iter() {
                 // Values are non-negative -- a zero sum implies that all tracts are 0.0
-                let curr_mean = match sums.get(curr_cat) {
-                    Ok(sum) if sum > 0.0 => sum / psu_size,
+                let curr_mean = match sums.get(curr_cat).copied() {
+                    Some(sum) if sum > 0.0 => sum / psu_size,
                     _ => continue,
                 };
 
                 // Inner loop of cats from larger psus
-                for large_psu in self.psus.superset_psu(psu_id).expect("psu to exist") {
+                for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
                     let large_psu_size = f64::from(large_psu.size().get());
                     let large_area_frac = frame_area.get() / large_psu_size;
 
                     for large_cat in large_psu.categories_iter() {
                         // We're looking for mean in intersect set, hence psu_size is the mean size
-                        let large_mean = match sums.get(large_cat) {
-                            Ok(sum) if sum > 0.0 => sum / psu_size,
+                        let large_mean = match sums.get(large_cat).copied() {
+                            Some(sum) if sum > 0.0 => sum / psu_size,
                             _ => continue,
                         };
 
@@ -380,7 +398,7 @@ impl Nils {
                             .get_mut((curr_cat, large_cat))
                             .expect("cats to exist");
 
-                        for &tract_id in &tract_ids[..tract_range.end] {
+                        for tract_id in &tract_ids[..tract_range.end] {
                             let curr_deviance = self
                                 .tracts
                                 .get_category_value(tract_id, curr_cat)
@@ -417,23 +435,23 @@ impl Nils {
         &self,
         frame_area: A,
         spreading: &SpreadingOptions<P>,
-    ) -> Result<NilsCovariance>
+    ) -> NilsResult<NilsCovariance<CID>>
     where
-        A: TryInto<Area, Error = anyhow::Error>,
-        P: PointSet<Id = TractId>,
+        PID: Copy + Eq,
+        CID: Copy + Hash + Ord,
+        TID: Copy + Eq + Display + Hash,
+        A: TryInto<Area, Error = TractError>,
+        P: PointSet<Id = TID>,
     {
         let frame_area = frame_area.try_into()?;
         // Prepare covariance matrix structure
         let mut cov_mat = NilsCovariance::from_psustore(&self.psus)?;
         // Get vector of tract ids,
-        let mut tract_ids: Vec<TractId> = self.tracts.iter().map(|(&tid, _)| tid).collect();
+        let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(&tid, _)| tid).collect();
         // Create tree
         let mut tree = Tree::new(spreading, &mut tract_ids);
         let mut searcher = KNearestNeighbourSearcher::new(
-            self.psus
-                .get_max_psu()
-                .expect("there to be psus")
-                .nn_size()
+            (*self.psus.get_max_psu().expect("there to be psus").nn_size())
                 .try_into()
                 .expect("u32 -> usize"),
             tree.data(),
@@ -443,8 +461,8 @@ impl Nils {
         // Remove all tract_ids from the tree (except the first)
         // We will add tract_ids to the tree again, as we loop through the psus
         let (first_psu, first_range) = tract_ranges[0].clone();
-        for tract_id in tract_ids.iter().skip(first_range.end).copied() {
-            tree.remove_unit(tract_id);
+        for tract_id in tract_ids.iter().skip(first_range.end) {
+            tree.remove_unit(*tract_id);
         }
 
         // loop from smallest to largest psu
@@ -456,15 +474,15 @@ impl Nils {
             let range_end = tract_range.end;
             // Anytime we are not in the first psu, we need to re-add the units to the tree
             if psu_id != first_psu {
-                for &tract_id in &tract_ids[tract_range] {
-                    tree.insert_unit(tract_id);
+                for tract_id in &tract_ids[tract_range] {
+                    tree.insert_unit(*tract_id);
                 }
             }
 
             // Smaller psu info
-            let psu = self.psus.get_psu(psu_id).expect("psu id to exist");
-            let psu_size = f64::from(psu.size().get());
-            let psu_nn = f64::from(psu.nn_size().get());
+            let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
+            let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
+            let psu_nn = psu.nn_size().get().to_f64().expect("u32 -> f64");
             let area_frac = frame_area.get() / psu_size;
 
             // In normal variance est, we loop through psus->cats->tracts.
@@ -475,11 +493,11 @@ impl Nils {
             // psu_outer->tracts->cat_outer->psu_inner->cat_inner.
 
             // Set searcher size
-            searcher.set_nominal_size(psu.nn_size().try_into().expect("u32 -> usize"));
+            searcher.set_nominal_size((*psu.nn_size()).try_into().expect("u32 -> usize"));
 
-            for &tract_id in &tract_ids[..range_end] {
+            for tract_id in &tract_ids[..range_end] {
                 searcher
-                    .reset_from_point(tree.data().coords(tract_id))
+                    .reset_from_point(tree.data().coords(*tract_id))
                     .expect("size to match")
                     .search(&tree)
                     .expect("neighbours to be found");
@@ -490,7 +508,7 @@ impl Nils {
                         .iter()
                         .map(|n| {
                             self.tracts
-                                .get_category_value(n.id(), curr_cat)
+                                .get_category_value(&n.id(), curr_cat)
                                 .expect("curr_cat to exist in tract")
                         })
                         .sum::<f64>()
@@ -501,14 +519,14 @@ impl Nils {
                         .expect("curr_cat to exist in tract_id")
                         - curr_mean;
 
-                    for large_psu in self.psus.superset_psu(psu_id).expect("psu to exist") {
+                    for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
                         for large_cat in large_psu.categories_iter() {
                             let large_mean = searcher
                                 .neighbours()
                                 .iter()
                                 .map(|n| {
                                     self.tracts
-                                        .get_category_value(n.id(), large_cat)
+                                        .get_category_value(&n.id(), large_cat)
                                         .expect("large_cat to exist in tract")
                                 })
                                 .sum::<f64>()
@@ -530,7 +548,7 @@ impl Nils {
 
             for curr_cat in psu.categories_iter() {
                 // Smaller psu info
-                for large_psu in self.psus.superset_psu(psu_id).expect("psu to exist") {
+                for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
                     // Larger psu info
                     let large_psu_size = f64::from(large_psu.size().get());
                     let large_area_frac = frame_area.get() / large_psu_size;

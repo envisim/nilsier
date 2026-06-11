@@ -12,6 +12,7 @@
 
 //! Handling of categories (or classes) defined on plots.
 
+use std::cmp::Ordering;
 use std::mem::replace;
 
 use thiserror::Error;
@@ -24,6 +25,8 @@ pub enum CatError {
     #[error("CAT ID ({0}) already exist")]
     CatIdCollision(String),
 }
+// /// Shorthand for `Result` with [`CatError`] error type.
+// type CatResult<T> = Result<T, CatError>;
 
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -43,20 +46,10 @@ impl<CID> CatIdPair<CID> {
     }
     /// Returns the first member of the pair
     #[inline]
-    pub fn get_a(&self) -> CID
-    where
-        CID: Copy,
-    {
-        self.0
-    }
+    pub fn get_a(&self) -> &CID { &self.0 }
     /// Returns the second member of the pair
     #[inline]
-    pub fn get_b(&self) -> CID
-    where
-        CID: Copy,
-    {
-        self.1
-    }
+    pub fn get_b(&self) -> &CID { &self.1 }
 }
 impl<CID> From<(CID, CID)> for CatIdPair<CID>
 where
@@ -65,10 +58,17 @@ where
     #[inline]
     fn from((cat_a, cat_b): (CID, CID)) -> Self { Self::new(cat_a, cat_b) }
 }
+impl<CID> From<(&CID, &CID)> for CatIdPair<CID>
+where
+    CID: Copy + Ord,
+{
+    #[inline]
+    fn from((cat_a, cat_b): (&CID, &CID)) -> Self { Self::new(*cat_a, *cat_b) }
+}
 
 /// PSU of first occurance, i.e. at which sample the category starts to be inventoried
 #[must_use]
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy)]
 pub struct CategoryValue<CID> {
     /// Category (key)
     cat_id: CID,
@@ -78,7 +78,7 @@ pub struct CategoryValue<CID> {
 impl<CID> CategoryValue<CID> {
     /// Constructs a new container without value
     #[inline]
-    pub fn new(cat_id: CID, value: Option<f64>) -> Self where {
+    pub fn new(cat_id: CID, value: Option<f64>) -> Self {
         Self {
             cat_id,
             value: value.unwrap_or(0.0),
@@ -86,16 +86,11 @@ impl<CID> CategoryValue<CID> {
     }
     /// Returns the category id
     #[inline]
-    pub fn cat_id(&self) -> CID
-    where
-        CID: Copy,
-    {
-        self.cat_id
-    }
+    pub fn cat_id(&self) -> &CID { &self.cat_id }
     /// Reurns the value
     #[must_use]
     #[inline]
-    pub fn get(&self) -> f64 { self.value }
+    pub fn get(&self) -> &f64 { &self.value }
     /// Returns a mutable reference to the value
     #[must_use]
     #[inline]
@@ -108,57 +103,86 @@ impl<CID> CategoryValue<CID> {
     #[inline]
     pub fn add(&mut self, value: f64) { self.value += value; }
 }
-impl<ID> From<(ID, Option<f64>)> for CategoryValue {
-    #[inline]
-    fn from((cat_id, value): (ID, Option<f64>)) -> Self { Self::new(cat_id, value) }
-}
-impl<ID> From<(ID, f64)> for CategoryValue
+impl<CID, VAL> From<(CID, VAL)> for CategoryValue<CID>
 where
-    ID: Into<CatId>,
+    VAL: Into<Option<f64>>,
 {
     #[inline]
-    fn from((cat_id, value): (ID, f64)) -> Self { Self::new(cat_id, Some(value)) }
+    fn from((cat_id, value): (CID, VAL)) -> Self { Self::new(cat_id, value.into()) }
+}
+impl<CID> PartialEq for CategoryValue<CID>
+where
+    CID: Eq,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool { self.cat_id == other.cat_id }
+}
+impl<CID> Eq for CategoryValue<CID> where CID: Eq {}
+impl<CID> Ord for CategoryValue<CID>
+where
+    CID: Ord,
+{
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering { self.cat_id.cmp(&other.cat_id) }
+}
+impl<CID> PartialOrd for CategoryValue<CID>
+where
+    CID: Ord,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 /// Stores multiple categories in category-order
 #[must_use]
-#[derive(Clone, Debug, Default)]
-pub struct CategoryStore {
+#[derive(Clone, Debug)]
+pub struct CategoryStore<CID> {
     /// Store
-    store: Vec<CategoryValue>,
+    store: Vec<CategoryValue<CID>>,
 }
-impl CategoryStore {
+impl<CID> CategoryStore<CID> {
+    /// Constructs a new, empty, store
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            store: Vec::default(),
+        }
+    }
     /// Returns the index of a category
     /// # Errors
     /// Returns an error if the category does not exist
     #[inline]
-    fn index_of_category(&self, cat_id: CatId) -> Result<usize> {
-        self.store
-            .binary_search_by_key(&cat_id, CategoryValue::cat_id)
-            .map_err(|_| CatError::CatIdNotFound(cat_id).into())
+    fn index_of_category(&self, cat_id: &CID) -> Option<usize>
+    where
+        CID: Ord,
+    {
+        self.store.binary_search_by(|cv| cv.cat_id.cmp(cat_id)).ok()
     }
     /// Returns the value of a category.
-    /// # Errors
-    /// Reuturns an error if the category does not exist.
     #[inline]
-    pub fn get(&self, cat_id: CatId) -> Result<f64> {
+    pub fn get(&self, cat_id: &CID) -> Option<&f64>
+    where
+        CID: Ord,
+    {
         self.index_of_category(cat_id)
             .map(|idx| self.store[idx].get())
     }
     /// Returns a mutable reference to the value of a category.
-    /// # Errors
-    /// Returns an error if the category does not exist
     #[inline]
-    pub fn get_mut(&mut self, cat_id: CatId) -> Result<&mut f64> {
+    pub fn get_mut(&mut self, cat_id: &CID) -> Option<&mut f64>
+    where
+        CID: Ord,
+    {
         self.index_of_category(cat_id)
             .map(|idx| self.store[idx].get_mut())
     }
     /// Inserts a category-value pair into the store.
     /// Returns `Some`, if a pair with the same category id already exists.
     #[inline]
-    pub fn insert<PAIR>(&mut self, pair: PAIR) -> Option<CategoryValue>
+    pub fn insert<KEYVAL>(&mut self, pair: KEYVAL) -> Option<CategoryValue<CID>>
     where
-        PAIR: Into<CategoryValue>,
+        CID: Ord,
+        KEYVAL: Into<CategoryValue<CID>>,
     {
         let new = pair.into();
         match self
@@ -172,20 +196,28 @@ impl CategoryStore {
             }
         }
     }
-    /// Removes a category-value pair from the store
-    /// # Errors
-    /// Returns an error if the category does not exist
+    /// Removes a category-value pair from the store.
+    /// Returns `None` if `cat_id` was not present in the collection.
     #[inline]
-    pub fn remove(&mut self, cat_id: CatId) -> Result<CategoryValue> {
+    pub fn remove(&mut self, cat_id: &CID) -> Option<CategoryValue<CID>>
+    where
+        CID: Ord,
+    {
         self.index_of_category(cat_id)
             .map(|idx| self.store.remove(idx))
     }
     /// Returns an iterator over the store
+    #[must_use]
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item = &CategoryValue> + Clone { self.store.iter() }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &CategoryValue<CID>> + Clone {
+        self.store.iter()
+    }
     /// Returns a mutable iterator over the store
+    #[must_use]
     #[inline]
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut CategoryValue> { self.store.iter_mut() }
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut CategoryValue<CID>> {
+        self.store.iter_mut()
+    }
     /// Returns the number of pairs in the store
     #[must_use]
     #[inline]
@@ -198,15 +230,13 @@ impl CategoryStore {
     #[inline]
     pub fn add_value<PAIR>(&mut self, pair: PAIR)
     where
-        PAIR: Into<CategoryValue>,
+        CID: Ord,
+        PAIR: Into<CategoryValue<CID>>,
     {
         let new = pair.into();
-        match self
-            .store
-            .binary_search_by_key(&new.cat_id(), CategoryValue::cat_id)
-        {
+        match self.store.binary_search(&new) {
             Ok(idx) => {
-                self.store[idx].add(new.get());
+                self.store[idx].add(*new.get());
             }
             Err(idx) => {
                 self.store.insert(idx, new);
@@ -222,10 +252,20 @@ impl CategoryStore {
     #[inline]
     pub fn is_nil(&self) -> bool { self.store.iter().all(CategoryValue::is_nil) }
 }
-impl FromIterator<CatId> for CategoryStore {
+impl<CID> Default for CategoryStore<CID> {
     #[inline]
-    fn from_iter<T: IntoIterator<Item = CatId>>(iter: T) -> Self {
-        let mut store = Self::default();
+    fn default() -> Self { Self::new() }
+}
+impl<CID> FromIterator<CID> for CategoryStore<CID>
+where
+    CID: Ord,
+{
+    #[inline]
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = CID>,
+    {
+        let mut store = Self::new();
         for cat_id in iter {
             store.insert((cat_id, None));
         }

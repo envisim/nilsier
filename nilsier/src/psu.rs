@@ -13,17 +13,16 @@
 //! Handling of Psus, i.e. hierarchical samples within Nils.
 
 use std::cmp::Ordering;
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+};
 pub use std::num::NonZeroU32;
 
 use num_traits::ToPrimitive;
 use thiserror::Error;
 
-use crate::category::{
-    CatError,
-    CatId,
-};
-use crate::utils::Identifier;
+use crate::category::CatError;
 
 #[non_exhaustive]
 #[derive(Error, Debug, Clone)]
@@ -39,6 +38,7 @@ pub enum PsuError {
     #[error(transparent)]
     Category(#[from] CatError),
 }
+/// Shorthand for `Result` with [`PsuError`] error type.
 type PsuResult<T> = Result<T, PsuError>;
 
 /// PSU information header
@@ -67,16 +67,11 @@ impl<PID> PsuHeader<PID> {
     }
     /// Returns the PSU identifier
     #[inline]
-    pub fn psu_id(&self) -> PID
-    where
-        PID: Copy,
-    {
-        self.psu_id
-    }
+    pub fn psu_id(&self) -> &PID { &self.psu_id }
     /// Returns the sample size of the PSU
     #[must_use]
     #[inline]
-    pub fn size(&self) -> NonZeroU32 { self.size }
+    pub fn size(&self) -> &NonZeroU32 { &self.size }
 }
 impl<PID> PartialEq for PsuHeader<PID>
 where
@@ -145,26 +140,21 @@ impl<PID, CID> PsuData<PID, CID>
     pub fn header(&self) -> &PsuHeader<PID> { &self.header }
     /// Returns the PSU identifier
     #[inline]
-    pub fn psu_id(&self) -> PID
-    where
-        PID: Copy,
-    {
-        self.header.psu_id()
-    }
+    pub fn psu_id(&self) -> &PID { self.header.psu_id() }
     /// Returns the sample size of the PSU
     #[must_use]
     #[inline]
-    pub fn size(&self) -> NonZeroU32 { self.header.size() }
+    pub fn size(&self) -> &NonZeroU32 { self.header.size() }
     /// Returns the number of nearest neighbours to be used in spatially balanced variance
     /// estimation
     #[must_use]
     #[inline]
-    pub fn nn_size(&self) -> NonZeroU32 { self.nn_size }
+    pub fn nn_size(&self) -> &NonZeroU32 { &self.nn_size }
     /// Returns an iterator over the categories of the PSU
     #[must_use]
     #[inline]
-    pub fn categories_iter(&self) -> impl ExactSizeIterator<Item = CID> + Clone + '_ {
-        self.categories.iter().copied()
+    pub fn categories_iter(&self) -> impl ExactSizeIterator<Item = &CID> + Clone + '_ {
+        self.categories.iter()
     }
     /// Returns the number of categories in the PSU. A category is "in the PSU" if the category
     /// appears in this PSU and smaller PSUs, but not in larger PSUs.
@@ -174,13 +164,19 @@ impl<PID, CID> PsuData<PID, CID>
     /// Returns `true` if the PSU contains a category.
     #[must_use]
     #[inline]
-    fn contains_category<CID>(&self, cat_id: CID) -> bool {
-        self.categories.binary_search(&cat_id).is_ok()
+    fn contains_category(&self, cat_id: &CID) -> bool
+    where
+        CID: Ord,
+    {
+        self.categories.binary_search(cat_id).is_ok()
     }
     /// Returns `true` if the value was newly inserted.
     #[must_use]
     #[inline]
-    fn insert_category<CID>(&mut self, cat_id: CID) -> bool {
+    fn insert_category(&mut self, cat_id: CID) -> bool
+    where
+        CID: Ord,
+    {
         match self.categories.binary_search(&cat_id) {
             Err(idx) => {
                 self.categories.insert(idx, cat_id);
@@ -192,8 +188,11 @@ impl<PID, CID> PsuData<PID, CID>
     /// Returns `true` if the value was present.
     #[must_use]
     #[inline]
-    fn remove_category(&mut self, cat_id: CatId) -> bool {
-        match self.categories.binary_search(&cat_id) {
+    fn remove_category(&mut self, cat_id: &CID) -> bool
+    where
+        CID: Ord,
+    {
+        match self.categories.binary_search(cat_id) {
             Ok(idx) => {
                 let _removed_id = self.categories.remove(idx);
                 true
@@ -202,29 +201,24 @@ impl<PID, CID> PsuData<PID, CID>
         }
     }
 }
-impl<P> PartialEq for PsuData<P>
+impl<PID, CID> PartialEq for PsuData<PID, CID>
 where
-    P: Identifier,
+    PID: Eq,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool { self.header == other.header }
 }
-impl<P> Eq for PsuData<P> where P: Identifier {}
-impl<P> Ord for PsuData<P>
+impl<PID, CID> Eq for PsuData<PID, CID> where PID: Eq {}
+impl<PID, CID> Ord for PsuData<PID, CID>
 where
-    P: Identifier,
+    PID: Ord,
 {
     #[inline]
-    fn cmp(&self, other: &Self) -> Ordering
-    where
-        P: Identifier,
-    {
-        self.header.cmp(&other.header)
-    }
+    fn cmp(&self, other: &Self) -> Ordering { self.header.cmp(&other.header) }
 }
-impl<P> PartialOrd for PsuData<P>
+impl<PID, CID> PartialOrd for PsuData<PID, CID>
 where
-    P: Identifier,
+    PID: Ord,
 {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
@@ -235,31 +229,27 @@ where
 /// sample is a drawn from the sample before.
 #[must_use]
 #[derive(Debug, Default, Clone)]
-pub struct PsuStore<P>
-where
-    P: Identifier,
-{
+pub struct PsuStore<PID, CID> {
     // psus probably very small (about 10?)
     // store sorted by size
     // categories medium sized (about 100?)
     /// Psu storage, sorted by [`PsuHeader`] (size)
-    psus: Vec<PsuData<P>>,
+    psus: Vec<PsuData<PID, CID>>,
 }
 
-impl<P> PsuStore<P>
-where
-    P: Identifier,
-{
+impl<PID, CID> PsuStore<PID, CID> {
     /// Returns a reference to a PSU by identifier.
     #[must_use]
     #[inline]
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &PsuData<P>> + Clone { self.psus.iter() }
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &PsuData<PID, CID>> + Clone {
+        self.psus.iter()
+    }
     /// Returns an iterator over the categories in the store
     #[inline]
-    pub fn category_iter(&self) -> impl Iterator<Item = (CatId, &PsuData<P>)> + Clone {
+    pub fn category_iter(&self) -> impl Iterator<Item = (&CID, &PsuData<PID, CID>)> + Clone {
         self.psus
             .iter()
-            .flat_map(|pd| pd.categories.iter().map(move |&cat_id| (cat_id, pd)))
+            .flat_map(|pd| pd.categories.iter().map(move |cat_id| (cat_id, pd)))
     }
     /// Returns the number of PSUs in the store
     #[must_use]
@@ -273,29 +263,38 @@ where
     /// # Errors
     /// Returns an error if `psu_id` is not found.
     #[inline]
-    pub fn get_psu(&self, psu_id: PsuId<P>) -> Option<&PsuData<P>> {
+    pub fn get_psu(&self, psu_id: &PID) -> Option<&PsuData<PID, CID>>
+    where
+        PID: Eq,
+    {
         self.psus.iter().find(|dt| psu_id == dt.psu_id())
     }
     /// Returns a mutable reference to the header info of the PSU id
     /// # Errors
     /// Returns an error if `psu_id` is not found.
     #[inline]
-    fn get_psu_mut(&mut self, psu_id: PsuId<P>) -> Option<&mut PsuData<P>> {
+    fn get_psu_mut(&mut self, psu_id: &PID) -> Option<&mut PsuData<PID, CID>>
+    where
+        PID: Eq,
+    {
         self.psus.iter_mut().find(|dt| psu_id == dt.psu_id())
     }
     /// Returns the smallest PSU. Every other PSU is assumed to be a superset of this.
     #[must_use]
     #[inline]
-    pub fn get_min_psu(&self) -> Option<&PsuData<P>> { self.psus.first() }
+    pub fn get_min_psu(&self) -> Option<&PsuData<PID, CID>> { self.psus.first() }
     /// Returns the largest PSU. Every other PSU is assumed to be a subset of this.
     #[must_use]
     #[inline]
-    pub fn get_max_psu(&self) -> Option<&PsuData<P>> { self.psus.last() }
+    pub fn get_max_psu(&self) -> Option<&PsuData<PID, CID>> { self.psus.last() }
     /// Returns the index of a PSU.
     /// # Errors
     /// Returns an error if the `psu_id` is not found
     #[inline]
-    pub fn order_of_psu(&self, psu_id: PsuId<P>) -> Option<usize> {
+    pub fn order_of_psu(&self, psu_id: &PID) -> Option<usize>
+    where
+        PID: Eq,
+    {
         self.psus.iter().position(|dt| psu_id == dt.psu_id())
     }
     // /// Adds a new PSU. Any PSU larger than this is assumed to be a superset, and any PSU
@@ -327,8 +326,11 @@ where
     #[inline]
     pub fn subset_psu(
         &self,
-        psu_id: PsuId<P>,
-    ) -> Option<impl ExactSizeIterator<Item = &PsuData<P>> + Clone> {
+        psu_id: &PID,
+    ) -> Option<impl ExactSizeIterator<Item = &PsuData<PID, CID>> + Clone>
+    where
+        PID: Eq,
+    {
         let idx = self.order_of_psu(psu_id)?;
         Some(self.psus[..=idx].iter())
     }
@@ -338,8 +340,11 @@ where
     #[inline]
     pub fn superset_psu(
         &self,
-        psu_id: PsuId<P>,
-    ) -> Option<impl ExactSizeIterator<Item = &PsuData<P>> + Clone> {
+        psu_id: &PID,
+    ) -> Option<impl ExactSizeIterator<Item = &PsuData<PID, CID>> + Clone>
+    where
+        PID: Eq,
+    {
         let idx = self.order_of_psu(psu_id)?;
         Some(self.psus[idx..].iter())
     }
@@ -347,9 +352,13 @@ where
     /// # Errors
     /// Returns an error if `psu_id` does not exist, or if `cat_id` already exists.
     #[inline]
-    pub fn insert_category(&mut self, psu_id: PsuId<P>, cat_id: CatId) -> PsuResult<bool> {
-        if self.psus.iter().any(|pd| pd.contains_category(cat_id)) {
-            return Err(CatError::CatIdCollision(cat_id).into());
+    pub fn insert_category(&mut self, psu_id: &PID, cat_id: CID) -> PsuResult<bool>
+    where
+        PID: Eq + Display,
+        CID: Ord + Display,
+    {
+        if self.psus.iter().any(|pd| pd.contains_category(&cat_id)) {
+            return Err(CatError::CatIdCollision(cat_id.to_string()).into());
         }
 
         self.get_psu_mut(psu_id)
@@ -360,7 +369,11 @@ where
     /// # Errors
     /// Returns an error if `psu_id` does not exist.
     #[inline]
-    pub fn remove_category(&mut self, psu_id: PsuId<P>, cat_id: CatId) -> Option<bool> {
+    pub fn remove_category(&mut self, psu_id: &PID, cat_id: &CID) -> Option<bool>
+    where
+        PID: Eq,
+        CID: Ord,
+    {
         self.get_psu_mut(psu_id)
             .map(|pd| pd.remove_category(cat_id))
     }
@@ -368,14 +381,21 @@ where
     /// # Errors
     /// Returns an error if `cat_id` is not found in any PSU.
     #[inline]
-    pub fn get_psu_from_category(&self, cat_id: CatId) -> Option<&PsuData<P>> {
+    pub fn get_psu_from_category(&self, cat_id: &CID) -> Option<&PsuData<PID, CID>>
+    where
+        CID: Ord,
+    {
         self.psus.iter().find(|pd| pd.contains_category(cat_id))
     }
     /// Returns `true` if the `psu_id` contains `cat_id`.
     /// # Errors
     /// Returns an error if `psu_id` does not exist.
     #[inline]
-    pub fn psu_contains_category(&self, psu_id: PsuId<P>, cat_id: CatId) -> Option<bool> {
+    pub fn psu_contains_category(&self, psu_id: &PID, cat_id: &CID) -> Option<bool>
+    where
+        PID: Eq,
+        CID: Ord,
+    {
         self.get_psu(psu_id).map(|pd| pd.contains_category(cat_id))
     }
     // #[inline]
@@ -404,39 +424,39 @@ where
     //     bail!(CatError::CatIdNotFound(cat_id));
     // }
     /// Initializes the storage by `(key, size)` entries
+    /// # Errors
+    /// Returns an error if the iterator sizes does not match.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::as_conversions,
-        reason = "rounded, wont truncate"
-    )]
     #[inline]
     pub fn new<I, J>(entries: I, nns: Option<J>) -> PsuResult<Self>
     where
-        I: ExactSizeIterator<Item = PsuHeader<P>>,
-        J: ExactSizeIterator<Item = NonZeroU32>,
+        PID: Ord,
+        I: IntoIterator<Item = PsuHeader<PID>>,
+        I::IntoIter: ExactSizeIterator,
+        J: IntoIterator<Item = NonZeroU32>,
+        J::IntoIter: ExactSizeIterator,
     {
-        let mut map: Vec<PsuData<P>> = if let Some(nn) = nns {
+        let entries = entries.into_iter();
+        let mut map: Vec<PsuData<PID, CID>> = if let Some(nn) = nns {
+            let nn = nn.into_iter();
             if entries.len() != nn.len() {
                 return Err(PsuError::InvalidNeighbourhoodSize);
             }
 
             // Zip in nns and construct vector
-            let mut map: Vec<PsuData<P>> =
+            let mut map: Vec<PsuData<PID, CID>> =
                 entries.zip(nn).map(|(h, n)| PsuData::new(h, n)).collect();
             map.sort();
             map
         } else {
             // Construct without nns
-            let mut headers: Vec<PsuHeader<P>> = entries.collect();
+            let mut headers: Vec<PsuHeader<PID>> = entries.collect();
             headers.sort();
             let min_size_frac = 4.0
                 / headers
                     .first()
-                    .map(|h| h.size())
                     // if default is used, headers were empty...just any size goes
-                    .unwrap_or(PsuData::NN_DEFAULT_SIZE)
+                    .map_or(PsuData::<PID, CID>::NN_DEFAULT_SIZE, |ph| *ph.size())
                     .get()
                     .to_f64()
                     .expect("u32 -> f64");
@@ -447,9 +467,9 @@ where
                         .round()
                         .to_u32()
                         .expect("f64 -> u32");
-                    PsuData::try_new(h, nn_size)
+                    PsuData::<PID, CID>::try_new(h, nn_size)
                 })
-                .collect()?
+                .collect::<PsuResult<Vec<PsuData<PID, CID>>>>()?
         };
 
         // Remove duplicate keys

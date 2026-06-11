@@ -20,7 +20,6 @@ workspace = true
 # envisim_utils = {version="0.6.0", default-features=false}
 envisim_utils = {version="*", path="../../rust-samplr/envisim_utils", default-features=false}
 rustc-hash = "2.1.1"
-anyhow = "1.0.102"
 thiserror = "2.0.18"
 num-traits = "0.2.19"
 
