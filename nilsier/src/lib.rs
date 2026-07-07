@@ -25,14 +25,15 @@ use std::num::{
 };
 use std::ops::Range;
 
-use category::CatError;
+use category::{
+    CatError,
+    CategoryValue,
+};
 use envisim_utils::kd_tree::Tree;
 use envisim_utils::kd_tree::searcher::KNearestNeighbourSearcher;
-use envisim_utils::matrix::{
-    Matrix,
-    PointSet,
-};
+use envisim_utils::matrix::Matrix;
 use envisim_utils::sampling_options::SpreadingOptions;
+use envisim_utils::utils::PointSet;
 use num_traits::ToPrimitive;
 use psu::PsuHeader;
 use rustc_hash::{
@@ -74,16 +75,28 @@ pub enum NilsError {
 /// Shorthand for `Result` with [`NilsError`] error type.
 type NilsResult<T> = Result<T, NilsError>;
 
+/// Strategy used in the estimation of the covariance
+#[non_exhaustive]
+#[must_use]
+#[derive(Debug, Copy, Clone)]
+pub enum CovarianceStrategy {
+    /// Assumes the sample(s) were drawn using SRS.
+    SimpleRandomSample,
+    /// Uses the nearest neighbour variance estimation.
+    NearestNeighbour,
+}
 /// Contains information of covariance between category id-pairs
 #[must_use]
 #[derive(Debug, Clone)]
-pub struct NilsCovariance<CID> {
+pub struct CovarianceMatrix<CID> {
     /// Store of category-pairs and their respective covariance.
     cov_mat: FxHashMap<CatIdPair<CID>, f64>,
     /// Number of categories. `cov_mat` should be of length `n_cats * (n_cats + 1) / 2`.
     n_cats: NonZeroUsize,
+    /// Covariance estimation strategy
+    estimation_strategy: CovarianceStrategy,
 }
-impl<CID> NilsCovariance<CID> {
+impl<CID> CovarianceMatrix<CID> {
     /// Constructs a new covariance storage from `psu_store`
     /// # Errors
     /// Returns an error if the `psu_store` doesn't contain any categories.
@@ -107,7 +120,19 @@ impl<CID> NilsCovariance<CID> {
             }
         }
 
-        Ok(Self { cov_mat, n_cats })
+        Ok(Self {
+            cov_mat,
+            n_cats,
+            estimation_strategy: CovarianceStrategy::SimpleRandomSample,
+        })
+    }
+    /// Returns the estimation strategy
+    #[inline]
+    pub fn estimation_strategy(&self) -> CovarianceStrategy { self.estimation_strategy }
+    /// Sets the estimation strategy
+    #[inline]
+    fn set_estimation_strategy(&mut self, strategy: CovarianceStrategy) {
+        self.estimation_strategy = strategy;
     }
     /// Returns the covariance between a `cat_pair`.
     #[must_use]
@@ -129,6 +154,10 @@ impl<CID> NilsCovariance<CID> {
     {
         self.cov_mat.get_mut(&cat_pair.into())
     }
+    /// Returns the variance, i.e. the sum of the covariance matrix
+    #[must_use]
+    #[inline]
+    pub fn variance(&self) -> f64 { self.cov_mat.values().sum() }
     /// Returns a tuple containing the covariance matrix, and the categories in their order of
     /// appearance in the matrix.
     #[expect(clippy::integer_division, reason = "have exact solution")]
@@ -161,12 +190,35 @@ impl<CID> NilsCovariance<CID> {
         (cm, cats)
     }
 }
-impl<CID> From<NilsCovariance<CID>> for Matrix<f64>
+impl<CID> From<CovarianceMatrix<CID>> for Matrix<f64>
 where
     CID: Copy + Hash + Ord,
 {
     #[inline]
-    fn from(value: NilsCovariance<CID>) -> Matrix<f64> { value.to_matrix().0 }
+    fn from(value: CovarianceMatrix<CID>) -> Matrix<f64> { value.to_matrix().0 }
+}
+
+/// The return value of an estimate.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct EstimatePerCategory<CID> {
+    /// Estimate per category.
+    pub estimate_per_category: CategoryStore<CID, f64>,
+    /// Number of tracts per category that have positive values.
+    pub positive_tracts_per_category: CategoryStore<CID, u64>,
+    /// Number of tracts that have positive values in any category.
+    pub positive_tracts: u64,
+}
+impl<CID> EstimatePerCategory<CID> {
+    /// Returns the estimate
+    #[must_use]
+    #[inline]
+    pub fn estimate(&self) -> f64 {
+        self.estimate_per_category
+            .iter()
+            .map(CategoryValue::get)
+            .sum()
+    }
 }
 
 /// A store of Nils PSUs and tracts
@@ -179,7 +231,8 @@ pub struct Nils<PID, CID, TID> {
     tracts: TractStore<TID, PID, CID>,
 }
 impl<PID, CID, TID> Nils<PID, CID, TID> {
-    /// Initialise with psus and sizes
+    /// Initialise with psus and sizes. `capacity` determines the number of tracts to reserve space
+    /// for.
     /// # Errors
     /// Returns an error if the iterators does not match in size.
     #[inline]
@@ -193,11 +246,23 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         let tracts = TractStore::with_capactity(capacity);
         Ok(Self { psus, tracts })
     }
+    /// Add a category to a psu
+    /// # Errors
+    /// Returns an error if any category duplicates are found.
+    #[inline]
+    pub fn add_category_to_psu(&mut self, psu_id: &PID, category: CID) -> NilsResult<()>
+    where
+        PID: Display + Eq,
+        CID: Display + Ord,
+    {
+        self.psus.insert_category(psu_id, category)?;
+        Ok(())
+    }
     /// Initialise categories-psu maps
     /// # Errors
     /// Returns an error if any category duplicates are found.
     #[inline]
-    pub fn add_categories_to_psu<I>(mut self, psu_id: &PID, categories: I) -> NilsResult<Self>
+    pub fn add_categories_to_psu<I>(&mut self, psu_id: &PID, categories: I) -> NilsResult<()>
     where
         PID: Display + Eq,
         CID: Display + Ord,
@@ -206,21 +271,22 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         for cat_id in categories {
             self.psus.insert_category(psu_id, cat_id)?;
         }
-        Ok(self)
+        Ok(())
     }
     /// Initialise tract-psu maps
     /// # Errors
-    /// Returns an error if the `area` cannot be constructed, if a PSU ID is not found, or if a
+    /// Returns an error if the `tract_area` cannot be constructed, if a PSU ID is not found, or if a
     /// tract ID duplicate is found.
     #[inline]
-    pub fn add_tracts<I, A>(mut self, tracts: I, area: A) -> NilsResult<Self>
+    pub fn add_tracts<I, A>(&mut self, tracts: I, tract_area: A) -> NilsResult<()>
     where
         PID: Display + Eq,
         TID: Copy + Display + Eq + Hash,
-        I: IntoIterator<Item = TractHeaderEntry<TID, PID>>,
-        A: TryInto<Area, Error = TractError>,
+        I: Iterator<Item = TractHeaderEntry<TID, PID>>,
+        A: TryInto<Area>,
+        A::Error: Into<TractError>,
     {
-        let area = area.try_into()?;
+        let area = tract_area.try_into().map_err(Into::into)?;
         for tract in tracts {
             // Assert that the psu is valid
             if self.psus.get_psu(tract.psu_id()).is_none() {
@@ -230,7 +296,19 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             // Insert and replace
             self.tracts.insert(Tract::new(tract, area))?;
         }
-        Ok(self)
+        Ok(())
+    }
+    /// Add tract value entry. Does not check if category exists.
+    /// # Errors
+    /// Returns an error if a tract ID cannot be found.
+    #[inline]
+    pub fn add_value_entry(&mut self, tract_entry: TractValueEntry<TID, CID>) -> NilsResult<()>
+    where
+        CID: Copy + Ord,
+        TID: Copy + Display + Eq + Hash,
+    {
+        self.tracts.add_value_from_entry(tract_entry)?;
+        Ok(())
     }
     /// Add tract value entries. Does not check if category exists.
     /// # Errors
@@ -248,24 +326,44 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         Ok(())
     }
-    /// Estimates totals per category
+    /// Estimates totals per category.
+    /// Returns a tuple:
+    /// 1. Totals per category.
+    /// 2. Number of tracts with positive values per category.
+    /// 3. Number of tracts with positive values in a category.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn estimate_per_category(&self, frame_area: Area) -> CategoryStore<CID>
+    pub fn estimate_per_category(&self, frame_area: Area) -> EstimatePerCategory<CID>
     where
         CID: Copy + Ord,
     {
-        let mut v: CategoryStore<CID> = self
-            .psus
-            .category_iter()
-            .map(|(cat_id, _)| cat_id)
-            .copied()
-            .collect();
+        let mut epc = EstimatePerCategory {
+            estimate_per_category: self
+                .psus
+                .category_iter()
+                .map(|(cat_id, _)| cat_id)
+                .copied()
+                .collect(),
+            positive_tracts_per_category: self
+                .psus
+                .category_iter()
+                .map(|(cat_id, _)| cat_id)
+                .copied()
+                .collect(),
+            positive_tracts: 0,
+        };
 
         for (_, tract) in self.tracts.iter() {
+            let mut pos_tract = false;
             tract.totals().iter().for_each(|&ct| {
-                v.add_value(ct);
+                if 0.0 < *ct.get() {
+                    epc.estimate_per_category.add_value(ct);
+                    epc.positive_tracts_per_category
+                        .add_value((*ct.cat_id(), 1));
+                    pos_tract = true;
+                }
             });
+            epc.positive_tracts += u64::from(pos_tract);
         }
 
         for psu in self.psus.iter() {
@@ -273,11 +371,13 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             let area_frac = frame_area.get() / size;
 
             for cat_id in psu.categories_iter() {
-                *v.get_mut(cat_id).expect("cat id to exist") *= area_frac;
+                *epc.estimate_per_category
+                    .get_mut(cat_id)
+                    .expect("cat id to exist") *= area_frac;
             }
         }
 
-        v
+        epc
     }
     /// Sorts the `tract_ids` and constructs tract ranges over the psus
     #[must_use]
@@ -335,18 +435,20 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// invalid.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn covariance_estimate<A>(&self, frame_area: A) -> NilsResult<NilsCovariance<CID>>
+    pub fn covariance_estimate<A>(&self, frame_area: A) -> NilsResult<CovarianceMatrix<CID>>
     where
         PID: Copy + Eq,
         CID: Copy + Hash + Ord,
         TID: Copy + Eq + Display + Hash,
-        A: TryInto<Area, Error = TractError>,
+        A: TryInto<Area>,
+        A::Error: Into<TractError>,
     {
-        let frame_area = frame_area.try_into()?;
+        let frame_area = frame_area.try_into().map_err(Into::into)?;
         // Prepare covariance matrix structure
-        let mut cov_mat = NilsCovariance::from_psustore(&self.psus)?;
+        let mut cov_mat = CovarianceMatrix::from_psustore(&self.psus)?;
+        cov_mat.set_estimation_strategy(CovarianceStrategy::SimpleRandomSample);
         // Prepare category sum container
-        let mut sums: CategoryStore<CID> = self
+        let mut sums: CategoryStore<CID, f64> = self
             .psus
             .category_iter()
             .map(|(cat_id, _)| *cat_id)
@@ -422,7 +524,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         Ok(cov_mat)
     }
-    /// Returns an estimated covariance matrix.
+    /// Returns an estimated covariance matrix using the nearest neighbour variance estimator.
     ///
     /// Spreading matrix assumed to be in same order as insertion order of tracts
     /// # Errors
@@ -431,21 +533,23 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// # Panics
     /// Panics if `u32` cannot be converted into `usize`.
     #[inline]
-    pub fn covariance_estimate_balanced<A, P>(
+    pub fn covariance_estimate_nn<A, P>(
         &self,
         frame_area: A,
         spreading: &SpreadingOptions<P>,
-    ) -> NilsResult<NilsCovariance<CID>>
+    ) -> NilsResult<CovarianceMatrix<CID>>
     where
         PID: Copy + Eq,
         CID: Copy + Hash + Ord,
         TID: Copy + Eq + Display + Hash,
-        A: TryInto<Area, Error = TractError>,
+        A: TryInto<Area>,
+        A::Error: Into<TractError>,
         P: PointSet<Id = TID>,
     {
-        let frame_area = frame_area.try_into()?;
+        let frame_area = frame_area.try_into().map_err(Into::into)?;
         // Prepare covariance matrix structure
-        let mut cov_mat = NilsCovariance::from_psustore(&self.psus)?;
+        let mut cov_mat = CovarianceMatrix::from_psustore(&self.psus)?;
+        cov_mat.set_estimation_strategy(CovarianceStrategy::NearestNeighbour);
         // Get vector of tract ids,
         let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(&tid, _)| tid).collect();
         // Create tree

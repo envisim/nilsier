@@ -13,8 +13,11 @@
 //! Handling of categories (or classes) defined on plots.
 
 use std::cmp::Ordering;
+use std::iter::Sum;
 use std::mem::replace;
 
+use envisim_utils::utils::Number;
+use num_traits::ConstZero;
 use thiserror::Error;
 
 #[non_exhaustive]
@@ -69,19 +72,22 @@ where
 /// PSU of first occurance, i.e. at which sample the category starts to be inventoried
 #[must_use]
 #[derive(Debug, Clone, Copy)]
-pub struct CategoryValue<CID> {
+pub struct CategoryValue<CID, VAL> {
     /// Category (key)
     cat_id: CID,
     /// Value
-    value: f64,
+    value: VAL,
 }
-impl<CID> CategoryValue<CID> {
+impl<CID, VAL> CategoryValue<CID, VAL> {
     /// Constructs a new container without value
     #[inline]
-    pub fn new(cat_id: CID, value: Option<f64>) -> Self {
+    pub fn new(cat_id: CID, value: Option<VAL>) -> Self
+    where
+        VAL: ConstZero,
+    {
         Self {
             cat_id,
-            value: value.unwrap_or(0.0),
+            value: value.unwrap_or(VAL::ZERO),
         }
     }
     /// Returns the category id
@@ -90,42 +96,59 @@ impl<CID> CategoryValue<CID> {
     /// Reurns the value
     #[must_use]
     #[inline]
-    pub fn get(&self) -> &f64 { &self.value }
+    pub fn get(&self) -> &VAL { &self.value }
     /// Returns a mutable reference to the value
     #[must_use]
     #[inline]
-    pub fn get_mut(&mut self) -> &mut f64 { &mut self.value }
+    pub fn get_mut(&mut self) -> &mut VAL { &mut self.value }
     /// Returns `true` if the value is 0.0
     #[must_use]
     #[inline]
-    fn is_nil(&self) -> bool { !self.value.is_finite() || self.value <= 0.0 }
+    fn is_nil(&self) -> bool
+    where
+        VAL: Number,
+    {
+        !self.value.is_pos_finite()
+    }
     /// Adds to the value
     #[inline]
-    pub fn add(&mut self, value: f64) { self.value += value; }
+    pub fn add(&mut self, value: VAL)
+    where
+        VAL: Number,
+    {
+        self.value += value;
+    }
 }
-impl<CID, VAL> From<(CID, VAL)> for CategoryValue<CID>
+impl<CID, VAL> From<(CID, VAL)> for CategoryValue<CID, VAL>
 where
-    VAL: Into<Option<f64>>,
+    VAL: ConstZero,
 {
     #[inline]
-    fn from((cat_id, value): (CID, VAL)) -> Self { Self::new(cat_id, value.into()) }
+    fn from((cat_id, value): (CID, VAL)) -> Self { Self::new(cat_id, Some(value)) }
 }
-impl<CID> PartialEq for CategoryValue<CID>
+impl<CID, VAL> From<(CID, Option<VAL>)> for CategoryValue<CID, VAL>
+where
+    VAL: ConstZero,
+{
+    #[inline]
+    fn from((cat_id, value): (CID, Option<VAL>)) -> Self { Self::new(cat_id, value) }
+}
+impl<CID, VAL> PartialEq for CategoryValue<CID, VAL>
 where
     CID: Eq,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool { self.cat_id == other.cat_id }
 }
-impl<CID> Eq for CategoryValue<CID> where CID: Eq {}
-impl<CID> Ord for CategoryValue<CID>
+impl<CID, VAL> Eq for CategoryValue<CID, VAL> where CID: Eq {}
+impl<CID, VAL> Ord for CategoryValue<CID, VAL>
 where
     CID: Ord,
 {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering { self.cat_id.cmp(&other.cat_id) }
 }
-impl<CID> PartialOrd for CategoryValue<CID>
+impl<CID, VAL> PartialOrd for CategoryValue<CID, VAL>
 where
     CID: Ord,
 {
@@ -136,11 +159,11 @@ where
 /// Stores multiple categories in category-order
 #[must_use]
 #[derive(Clone, Debug)]
-pub struct CategoryStore<CID> {
+pub struct CategoryStore<CID, VAL> {
     /// Store
-    store: Vec<CategoryValue<CID>>,
+    store: Vec<CategoryValue<CID, VAL>>,
 }
-impl<CID> CategoryStore<CID> {
+impl<CID, VAL> CategoryStore<CID, VAL> {
     /// Constructs a new, empty, store
     #[inline]
     pub fn new() -> Self {
@@ -160,7 +183,7 @@ impl<CID> CategoryStore<CID> {
     }
     /// Returns the value of a category.
     #[inline]
-    pub fn get(&self, cat_id: &CID) -> Option<&f64>
+    pub fn get(&self, cat_id: &CID) -> Option<&VAL>
     where
         CID: Ord,
     {
@@ -169,7 +192,7 @@ impl<CID> CategoryStore<CID> {
     }
     /// Returns a mutable reference to the value of a category.
     #[inline]
-    pub fn get_mut(&mut self, cat_id: &CID) -> Option<&mut f64>
+    pub fn get_mut(&mut self, cat_id: &CID) -> Option<&mut VAL>
     where
         CID: Ord,
     {
@@ -179,10 +202,10 @@ impl<CID> CategoryStore<CID> {
     /// Inserts a category-value pair into the store.
     /// Returns `Some`, if a pair with the same category id already exists.
     #[inline]
-    pub fn insert<KEYVAL>(&mut self, pair: KEYVAL) -> Option<CategoryValue<CID>>
+    pub fn insert<KEYVAL>(&mut self, pair: KEYVAL) -> Option<CategoryValue<CID, VAL>>
     where
         CID: Ord,
-        KEYVAL: Into<CategoryValue<CID>>,
+        KEYVAL: Into<CategoryValue<CID, VAL>>,
     {
         let new = pair.into();
         match self
@@ -199,7 +222,7 @@ impl<CID> CategoryStore<CID> {
     /// Removes a category-value pair from the store.
     /// Returns `None` if `cat_id` was not present in the collection.
     #[inline]
-    pub fn remove(&mut self, cat_id: &CID) -> Option<CategoryValue<CID>>
+    pub fn remove(&mut self, cat_id: &CID) -> Option<CategoryValue<CID, VAL>>
     where
         CID: Ord,
     {
@@ -209,13 +232,13 @@ impl<CID> CategoryStore<CID> {
     /// Returns an iterator over the store
     #[must_use]
     #[inline]
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &CategoryValue<CID>> + Clone {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &CategoryValue<CID, VAL>> + Clone {
         self.store.iter()
     }
     /// Returns a mutable iterator over the store
     #[must_use]
     #[inline]
-    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut CategoryValue<CID>> {
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut CategoryValue<CID, VAL>> {
         self.store.iter_mut()
     }
     /// Returns the number of pairs in the store
@@ -231,7 +254,8 @@ impl<CID> CategoryStore<CID> {
     pub fn add_value<PAIR>(&mut self, pair: PAIR)
     where
         CID: Ord,
-        PAIR: Into<CategoryValue<CID>>,
+        VAL: Number,
+        PAIR: Into<CategoryValue<CID, VAL>>,
     {
         let new = pair.into();
         match self.store.binary_search(&new) {
@@ -246,19 +270,30 @@ impl<CID> CategoryStore<CID> {
     /// Returns the sum of the values in the sore
     #[must_use]
     #[inline]
-    pub fn sum(&self) -> f64 { self.store.iter().map(|cv| cv.value).sum() }
+    pub fn sum(&self) -> VAL
+    where
+        VAL: Copy + Sum<VAL>,
+    {
+        self.store.iter().map(|cv| cv.value).sum()
+    }
     /// Returns `true` if all pairs are nil
     #[must_use]
     #[inline]
-    pub fn is_nil(&self) -> bool { self.store.iter().all(CategoryValue::is_nil) }
+    pub fn is_nil(&self) -> bool
+    where
+        VAL: Number,
+    {
+        self.store.iter().all(CategoryValue::is_nil)
+    }
 }
-impl<CID> Default for CategoryStore<CID> {
+impl<CID, VAL> Default for CategoryStore<CID, VAL> {
     #[inline]
     fn default() -> Self { Self::new() }
 }
-impl<CID> FromIterator<CID> for CategoryStore<CID>
+impl<CID, VAL> FromIterator<CID> for CategoryStore<CID, VAL>
 where
     CID: Ord,
+    VAL: ConstZero,
 {
     #[inline]
     fn from_iter<T>(iter: T) -> Self

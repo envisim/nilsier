@@ -297,28 +297,6 @@ impl<PID, CID> PsuStore<PID, CID> {
     {
         self.psus.iter().position(|dt| psu_id == dt.psu_id())
     }
-    // /// Adds a new PSU. Any PSU larger than this is assumed to be a superset, and any PSU
-    // /// smaller than this is assumed to be a subset.
-    // fn insert_psu(&mut self, new: PsuData) -> Result<usize> {
-    //     // Check if key already exists, as we want to remove and return it if not
-    //     ensure!(
-    //         self.order_of_psu(new.psu_id()).is_err(),
-    //         PsuError::PsuIdCollision(new.psu_id())
-    //     );
-
-    //     // Find the correct spot for the new pair
-    //     let pos = self
-    //         .psus
-    //         .partition_point(|dt| dt.size().cmp(&new.size()).is_lt());
-    //     self.psus.insert(pos, new);
-    //     Ok(pos)
-    // }
-    // /// Removes a PSU by identifier.
-    // #[inline]
-    // fn remove_psu(&mut self, psu_id: PsuId) -> Result<PsuData> {
-    //     let idx = self.order_of_psu(psu_id)?;
-    //     Ok(self.psus.remove(idx))
-    // }
     /// Returns an iterator over all PSUs smaller than the given PSU, starting with the smallest and
     /// ending with the given PSU.
     /// # Errors
@@ -398,31 +376,6 @@ impl<PID, CID> PsuStore<PID, CID> {
     {
         self.get_psu(psu_id).map(|pd| pd.contains_category(cat_id))
     }
-    // #[inline]
-    // fn psu_superset_contains_category(&self, psu_id: PsuId, cat_id: CatId) -> Result<bool> {
-    //     // Until we have found psu_id, we're amongst the subsets
-    //     let mut found_psu_id = false;
-    //     for psu in self.psus.iter() {
-    //         if psu.psu_id() == psu_id {
-    //             found_psu_id = true;
-    //         }
-
-    //         if found_psu_id {
-    //             // Return true if we find cat
-    //             if psu.contains_category(cat_id) {
-    //                 return Ok(true);
-    //             }
-    //         } else {
-    //             // Return false if we find cat
-    //             if psu.contains_category(cat_id) {
-    //                 return Ok(false);
-    //             }
-    //         }
-    //     }
-
-    //     ensure!(found_psu_id, PsuError::PsuIdNotFound(psu_id));
-    //     bail!(CatError::CatIdNotFound(cat_id));
-    // }
     /// Initializes the storage by `(key, size)` entries
     /// # Errors
     /// Returns an error if the iterator sizes does not match.

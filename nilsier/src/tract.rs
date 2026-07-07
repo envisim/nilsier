@@ -14,6 +14,7 @@
 
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
+use std::convert::Infallible;
 use std::fmt::{
     Display,
     Formatter,
@@ -48,6 +49,14 @@ pub enum TractError {
     InvalidValue(f64),
     #[error(transparent)]
     Category(#[from] CatError),
+}
+impl From<Infallible> for TractError {
+    #[expect(
+        clippy::unreachable,
+        reason = "Infallible should never be converted to an Error"
+    )]
+    #[inline]
+    fn from(_: Infallible) -> Self { unreachable!() }
 }
 /// Shorthand for `Result` with [`TractError`] error type.
 type TractResult<T> = Result<T, TractError>;
@@ -227,7 +236,7 @@ pub struct Tract<TID, PID, CID> {
     /// Smallest PSU that includes this tract
     psu_id: PID,
     /// Category totals
-    totals: CategoryStore<CID>,
+    totals: CategoryStore<CID, f64>,
     /// Tract area
     area: Area,
 }
@@ -255,7 +264,7 @@ impl<TID, PID, CID> Tract<TID, PID, CID> {
     pub fn area(&self) -> &Area { &self.area }
     /// Returns the plot values of the tract.
     #[inline]
-    pub fn totals(&self) -> &CategoryStore<CID> { &self.totals }
+    pub fn totals(&self) -> &CategoryStore<CID, f64> { &self.totals }
     /// Adds an entry to the tract
     #[inline]
     pub fn add(&mut self, entry: TractValueEntry<TID, CID>)
