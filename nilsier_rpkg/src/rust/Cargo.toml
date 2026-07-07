@@ -1,5 +1,5 @@
 [package]
-name = "nilsier-r-rust"
+name = "rnilsier"
 version = "0.2.0"
 edition = "2021"
 license = "AGPL-3.0-only"
@@ -10,28 +10,61 @@ rust-version = "1.84.1"
 crate-type = ["staticlib", "lib"]
 
 [dependencies]
-savvy = "0.9.2"
+envisim_utils = {version="*", path="../../../../rust-samplr/envisim_utils", default-features=false}
 nilsier = {version="0.2.0", path="../../../nilsier"}
+num-traits = "0.2.19"
+savvy = "0.9.2"
+thiserror = "2.0.18"
 # envisim_estimate = {version="0.4.0"}
 # envisim_samplr = {version="0.5.0"}
 # envisim_utils = {version="0.4.0", default-features=false}
 # envisim_utils = {version="*", path="../../../envisim_utils", default-features=false}
 
 [lints.clippy]
-assertions_on_result_states = "warn"
-cast_lossless = "warn"
-cast_possible_wrap = "warn"
-cognitive_complexity = "warn"
+pedantic = { level = "warn", priority = -1 }
+restriction = { level = "warn", priority = -2 }
+
+# suspicious
+blanket_clippy_restriction_lints = "allow"
+
+# pedantic
+
+# restriction
+arbitrary_source_item_ordering = "allow"
+arithmetic_side_effects = "allow"
+default_numeric_fallback = "allow"
+else_if_without_else = "allow"
+empty_structs_with_brackets = "allow"
+exhaustive_structs = "allow"
+expect_used = "allow"
+float_arithmetic = "allow"
+indexing_slicing = "allow"
+implicit_return = "allow"
+integer_division_remainder_used = "allow"
+iter_over_hash_type = "allow"
+min_ident_chars = "allow"
+missing_trait_methods = "allow"
+map_err_ignore = "allow"
+module_name_repetitions = "allow"
+mod_module_files = "allow"
+pattern_type_mismatch = "allow"
+pub_use = "allow"
+same_name_method = "allow"
+semicolon_inside_block = "allow"
+separated_literal_suffix = "allow"
+shadow_reuse = "allow"
+single_call_fn = "allow"
+std_instead_of_alloc = "allow"
+std_instead_of_core = "allow"
+unused_trait_names = "allow"
+unwrap_in_result = "allow"
+question_mark_used = "allow"
+
+# nursery
 equatable_if_let = "warn"
-exhaustive_enums = "deny"
-from_iter_instead_of_collect = "warn"
-get_unwrap = "warn"
-if_not_else = "warn"
-if_then_some_else_none = "warn"
 imprecise_flops = "warn"
-match_bool = "warn"
 needless_collect = "warn"
-too_many_arguments = "allow"
+
 
 [profile.release]
 # By default, on release build, savvy terminates the R session when a panic

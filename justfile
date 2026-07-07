@@ -1,24 +1,13 @@
-r_source := 'R/*'
-build_path := 'build'
+mod rpkg
 
-# Default to just --list
-default:
-  @just --list
+[default]
+_default:
+  @just --list --list-submodules
 
-# Build the package source
-build: document
-    mkdir -p {{build_path}}
-    R -e 'devtools::build(path = "{{build_path}}")'
-    R -e 'devtools::build_manual("{{build_path}}", "{{build_path}}")'
+# Run clippy
+clippy: && rpkg::clippy
+  cargo clippy
 
-# Generate documentation
-document:
-  R -e 'devtools::document()'
-
-# Check a build
-check: build
-    R -e 'devtools::check_built("{{build_path}}", cran = TRUE)'
-
-# Performs sanity check on code
-sanity-check: build
-	R -e 'devtools::spell_check("{{build_path}}")'
+# Run rust test
+test: clippy && rpkg::test
+  cargo test

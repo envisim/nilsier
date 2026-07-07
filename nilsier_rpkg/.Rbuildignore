@@ -13,3 +13,8 @@ png$
 ^man-roxygen/
 ^test/*
 ^build/*
+
+^src/rust/\.cargo$
+^src/rust/target$
+^src/Makevars$
+^src/Makevars\.win$

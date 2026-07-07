@@ -2,11 +2,11 @@ TARGET = @TARGET@
 PROFILE = @PROFILE@
 MACOSX_DT = @MACOSX_DT@
 
-LIBNAME = libnilsier.a
+LIBNAME = librnilsier.a
 TARGET_DIR = $(CURDIR)/rust/target
 LIBDIR = $(TARGET_DIR)/$(TARGET)/$(subst dev,debug,$(PROFILE))
 STATLIB = $(LIBDIR)/$(LIBNAME)
-PKG_LIBS = -L$(LIBDIR) -lnilsier
+PKG_LIBS = -L$(LIBDIR) -lrnilsier
 
 CARGO_BUILD_ARGS = --lib \
 	--profile="$(PROFILE)" \

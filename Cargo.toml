@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["nilsier", "nilsier_rpkg/src/rust"]
+members = [
+  "nilsier"
+]
+exclude = [
+  "nilsier_rpkg/src/rust" # cannot be part of workspace, as it needs own lockfile
+]
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

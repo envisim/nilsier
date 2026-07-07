@@ -1,12 +1,12 @@
 TARGET = x86_64-pc-windows-gnu
 PROFILE = @PROFILE@
 
-LIBNAME = libnilsier.a
+LIBNAME = librnilsier.a
 TARGET_DIR = $(CURDIR)/rust/target
 LIBDIR = $(TARGET_DIR)/$(TARGET)/$(subst dev,debug,$(PROFILE))
 STATLIB = $(LIBDIR)/$(LIBNAME)
 
-PKG_LIBS = -L$(LIBDIR) -lnilsier \
+PKG_LIBS = -L$(LIBDIR) -lrnilsier \
 	-lws2_32 \
 	-ladvapi32 \
 	-luserenv \
