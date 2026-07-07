@@ -34,14 +34,14 @@ SEXP handle_result(SEXP res_) {
     return (SEXP)res;
 }
 
-SEXP savvy_nils_estimate__impl(SEXP c_arg__psus, SEXP c_arg__categories, SEXP c_arg__tracts, SEXP c_arg__values, SEXP c_arg__tract_area, SEXP c_arg__frame_area) {
-    SEXP res = savvy_nils_estimate__ffi(c_arg__psus, c_arg__categories, c_arg__tracts, c_arg__values, c_arg__tract_area, c_arg__frame_area);
+SEXP savvy_rust_nils_estimate__impl(SEXP c_arg__psus, SEXP c_arg__categories, SEXP c_arg__tracts, SEXP c_arg__values, SEXP c_arg__frame_area, SEXP c_arg__tract_area, SEXP c_arg__variance_strategy) {
+    SEXP res = savvy_rust_nils_estimate__ffi(c_arg__psus, c_arg__categories, c_arg__tracts, c_arg__values, c_arg__frame_area, c_arg__tract_area, c_arg__variance_strategy);
     return handle_result(res);
 }
 
 
 static const R_CallMethodDef CallEntries[] = {
-    {"savvy_nils_estimate__impl", (DL_FUNC) &savvy_nils_estimate__impl, 6},
+    {"savvy_rust_nils_estimate__impl", (DL_FUNC) &savvy_rust_nils_estimate__impl, 7},
     {NULL, NULL, 0}
 };
 

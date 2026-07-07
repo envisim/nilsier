@@ -43,36 +43,43 @@
 #' }
 #'
 #' @examples
-#' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+#' obj = nils(plots, tracts, psus, category_psu_map);
 #'
 #' @export
-NilsEstimate = function(
-  plot_data,
-  tract_data,
+nils = function(
   psus,
-  category_psu_map,
-  area = 46519242.1175867,
-  tract_area = 196 * 100.0 * pi
+  categories,
+  tracts,
+  data,
+  frame_area = 46519242.1175867,
+  tract_area = 196 * 100.0 * pi,
+  neighbourhood_size = 4L,
+  variance_strategy = "srs"
 ) {
-  category_psu_map = .PrepareCategoryPsuMap(category_psu_map);
-  tract_data = .PrepareTractData(tract_data);
-  plot_data = .PreparePlotData(plot_data);
+  psus       = prepare_psus(psus, neighbourhood_size);
+  categories = prepare_categories(categories);
+  tracts     = prepare_tracts(tracts);
+  data       = prepare_data(data);
 
-  area = .PrepareArea(area, "area");
-  tract_area = .PrepareArea(tract_area, "tract_area");
+  frame_area = prepare_area(tract_area);
+  tract_area = prepare_area(tract_area);
 
-  psus = .PreparePsus(psus, tract_data);
+  if (!(variance_strategy %in% c("srs", "nearest_neighbour"))) {
+    warning("unsupported variance strategy ... defaulting to 'srs'");
+    variance_strategy = "srs";
+  }
 
-  obj = .NilsEstimate(
+  obj = rust_nils_estimate(
     psus,
-    category_psu_map,
-    tract_data,
-    plot_data,
-    area,
-    tract_area
+    categories,
+    tracts,
+    data,
+    tract_area,
+    frame_area,
+    variance_strategy
   );
 
-  return(.ConstructNilsEstimate(
+  return(.construct_nils(
     obj,
     psus = psus,
     category_psu_map = category_psu_map,
@@ -82,7 +89,39 @@ NilsEstimate = function(
   ));
 }
 
-.ConstructNilsEstimate = function(obj, ...) {
+#' @rdname nils
+#' @export
+NilsEstimate = function(
+  plot_data,
+  tract_data,
+  psus,
+  category_psu_map,
+  area = 46519242.1175867,
+  tract_area = 196 * 100 * pi
+) nils(psus, category_psu_map, tract_data, plot_data, area, tract_area, "srs");
+
+#' @rdname nils
+#' @export
+NilsEstimateBalanced = \(
+  plot_data,
+  tract_data,
+  auxiliaries,
+  psus,
+  category_psu_map,
+  area = 46519242.1175867,
+  tract_area = 196 * 100 * pi,
+  size_of_neighbourhood = 4L
+) {
+  tracts = as.matrix(tract_data);
+  tracts = list(
+    tract       = tracts[, 1],
+    psu         = tracts[, 2],
+    auxiliaries = auxiliaries
+  );
+  nils(psus, category_psu_map, tracts, plot_data, area, tract_area, "nearest_neighbour");
+}
+
+.construct_nils = function(obj, ...) {
   params = list(...);
 
   cat_ids = params$category_psu_map[, 1];

@@ -38,8 +38,8 @@ NULL
 }
 
 #' Estimates according to Nils design
-`nils_estimate` <- function(`psus`, `categories`, `tracts`, `values`, `tract_area`, `frame_area`) {
-  .Call(savvy_nils_estimate__impl, `psus`, `categories`, `tracts`, `values`, `tract_area`, `frame_area`)
+`rust_nils_estimate` <- function(`psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`) {
+  .Call(savvy_rust_nils_estimate__impl, `psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`)
 }
 
 

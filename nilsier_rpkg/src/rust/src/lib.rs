@@ -134,12 +134,12 @@ impl PsuList {
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let ids: IntegerSexp = list
-            .get("psus")
+            .get("psu")
             .ok_or(savvy_err!("cannot find list item 'psus'"))?
             .try_into()?;
 
         let sizes: IntegerSexp = list
-            .get("sizes")
+            .get("size")
             .ok_or(savvy_err!("cannot find list item 'sizes'"))?
             .try_into()?;
 
@@ -147,7 +147,7 @@ impl PsuList {
             return Err(savvy_err!("'psus' and 'sizes' must match in length"));
         }
 
-        let nn_sizes = match list.get("nn_sizes") {
+        let nn_sizes = match list.get("nn_size") {
             Some(nn) => {
                 let nn: IntegerSexp = nn.try_into()?;
                 if ids.len() != nn.len() {
@@ -440,13 +440,14 @@ fn as_result_list(
 
 /// Estimates according to Nils design
 #[savvy]
-fn nils_estimate(
+fn rust_nils_estimate(
     psus: ListSexp,
     categories: ListSexp,
     tracts: ListSexp,
     values: ListSexp,
-    tract_area: f64,
     frame_area: f64,
+    tract_area: f64,
+    variance_strategy: &str,
 ) -> savvy::Result<Sexp> {
     // Prep data
     let tract_area = Area::new(tract_area)?;
@@ -466,13 +467,21 @@ fn nils_estimate(
     let estimates = nils.estimate_per_category(frame_area);
 
     // Covariance matrix
-    let covariances = match SpreadingData::new(tracts)? {
-        Some(sd) => {
+
+    let covariances = match (variance_strategy, SpreadingData::new(tracts)?) {
+        ("nearest_neighbour", Some(sd)) => {
             let so = SpreadingOptions::new(sd);
             nils.covariance_estimate_nn(frame_area, &so)?
         }
-        None => nils.covariance_estimate(frame_area)?,
+        _ => nils.covariance_estimate(frame_area)?,
     };
+    // let covariances = match SpreadingData::new(tracts)? {
+    //     Some(sd) => {
+    //         let so = SpreadingOptions::new(sd);
+    //         nils.covariance_estimate_nn(frame_area, &so)?
+    //     }
+    //     None => nils.covariance_estimate(frame_area)?,
+    // };
 
     let list = as_result_list(&estimates, &covariances)?;
     list.into()
