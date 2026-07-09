@@ -5,11 +5,12 @@
 export PATH="$PATH:$HOME/.cargo/bin"
 
 NOT_CRAN=${NOT_CRAN:-"false"}
-LIBRSAMPLR_BUILD=${LIBRSAMPLR_BUILD:-""}
+LIB_BUILD=${LIB_BUILD:-""}
 
-LIBNAME="librnilsier.a"
-LIBRSAMPLR_DEFAULT_PATH="$(pwd)/tools/${LIBNAME}"
-LIBRSAMPLR_PATH=${LIBRSAMPLR_PATH:-${LIBRSAMPLR_DEFAULT_PATH}}
+RUST_LIBNAME="rnilsier"
+LIBNAME="lib${RUST_LIBNAME}.a"
+LIB_DEFAULT_PATH="$(pwd)/tools/${LIBNAME}"
+LIB_PATH=${LIB_PATH:-${LIB_DEFAULT_PATH}}
 
 check_cargo() {
   if [ ! "$(command -v cargo)" ]; then
@@ -59,15 +60,15 @@ check_emscripten() {
 }
 
 check_bin_lib() {
-  if [ "${NOT_CRAN}" = "true" ] && [ -z "${LIBRSAMPLR_BUILD}" ]; then
-    LIBRSAMPLR_BUILD="false"
+  if [ "${NOT_CRAN}" = "true" ] && [ -z "${LIB_BUILD}" ]; then
+    LIB_BUILD="false"
   fi
 
-  if [ "${LIBRSAMPLR_BUILD}" = "false" ]; then
-    if [ -f "tools/lib-sums.tsv" ] && [ ! -f "${LIBRSAMPLR_PATH}" ]; then
+  if [ "${LIB_BUILD}" = "false" ]; then
+    if [ -f "tools/lib-sums.tsv" ] && [ ! -f "${LIB_PATH}" ]; then
       cat <<EOF
 ---------------- [TRY TO DOWNLOAD PRE-BUILT BINARY] ----------------
-The library was not found at <${LIBRSAMPLR_PATH}>.
+The library was not found at <${LIB_PATH}>.
 Trying to download pre-built binary from the Internet...
 --------------------------------------------------------------------
 EOF
@@ -75,20 +76,20 @@ EOF
         echo "Failed to download pre-built binary."
     fi
 
-    if [ -f "${LIBRSAMPLR_PATH}" ] && [ "${LIBRSAMPLR_PATH}" != "${LIBRSAMPLR_DEFAULT_PATH}" ]; then
+    if [ -f "${LIB_PATH}" ] && [ "${LIB_PATH}" != "${LIB_DEFAULT_PATH}" ]; then
       cat <<EOF
 ------------------------- [COPYING BINARY] -------------------------
-Copying <${LIBRSAMPLR_PATH}> to <${LIBRSAMPLR_DEFAULT_PATH}>.
+Copying <${LIB_PATH}> to <${LIB_DEFAULT_PATH}>.
 --------------------------------------------------------------------
 EOF
-      mkdir -p "$(dirname "${LIBRSAMPLR_DEFAULT_PATH}")"
-      cp "${LIBRSAMPLR_PATH}" "${LIBRSAMPLR_DEFAULT_PATH}" && echo "Done!" || echo "Failed to copy binary."
+      mkdir -p "$(dirname "${LIB_DEFAULT_PATH}")"
+      cp "${LIB_PATH}" "${LIB_DEFAULT_PATH}" && echo "Done!" || echo "Failed to copy binary."
     fi
 
-    if [ -f "${LIBRSAMPLR_DEFAULT_PATH}" ]; then
+    if [ -f "${LIB_DEFAULT_PATH}" ]; then
       cat <<EOF
 ---------------------- [LIBRARY BINARY FOUND] ----------------------
-The library was found at <${LIBRSAMPLR_DEFAULT_PATH}>. No need to build it.
+The library was found at <${LIB_DEFAULT_PATH}>. No need to build it.
 
 Note: rustc version: $(command -v rustc >/dev/null && rustc -V || echo "Not found")
 --------------------------------------------------------------------
@@ -98,7 +99,7 @@ EOF
     fi
     cat <<EOF
 -------------------- [LIBRARY BINARY NOT FOUND] --------------------
-The library was not found at <${LIBRSAMPLR_PATH}>.
+The library was not found at <${LIB_PATH}>.
 Falling back to building from source.
 --------------------------------------------------------------------
 EOF
@@ -154,6 +155,7 @@ generate_makevars() {
   for suffix in "" ".win"; do
     makefile="src/Makevars${suffix}"
     sed \
+      -e "s|@RUST_LIBNAME@|${RUST_LIBNAME}|" \
       -e "s|@TARGET@|${TARGET}|" \
       -e "s|@PROFILE@|${PROFILE}|" \
       -e "s|@MACOSX_DT@|${MACOSX_DT}|" \

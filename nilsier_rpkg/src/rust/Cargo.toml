@@ -9,6 +9,10 @@ rust-version = "1.84.1"
 [lib]
 crate-type = ["staticlib", "lib"]
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [dependencies]
 envisim_utils = {version="*", path="../../../../rust-samplr/envisim_utils", default-features=false}
 nilsier = {version="0.2.0", path="../../../nilsier"}
