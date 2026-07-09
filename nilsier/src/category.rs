@@ -182,6 +182,13 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
             store: Vec::default(),
         }
     }
+    /// Constructs a new, empty, store, with some capacity
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            store: Vec::with_capacity(capacity),
+        }
+    }
     /// Returns the index of a category
     /// # Errors
     /// Returns an error if the category does not exist
@@ -240,6 +247,9 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
         self.index_of_category(cat_id)
             .map(|idx| self.store.remove(idx))
     }
+    /// Clears the store
+    #[inline]
+    pub fn clear(&mut self) { self.store.clear() }
     /// Returns an iterator over the store
     #[must_use]
     #[inline]

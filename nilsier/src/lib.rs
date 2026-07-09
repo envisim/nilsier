@@ -31,6 +31,7 @@ use category::{
 };
 use envisim_utils::kd_tree::Tree;
 use envisim_utils::kd_tree::searcher::KNearestNeighbourSearcher;
+use envisim_utils::kd_tree::searcher::neighbour::Neighbour;
 use envisim_utils::matrix::Matrix;
 use envisim_utils::sampling_options::SpreadingOptions;
 use envisim_utils::utils::PointSet;
@@ -664,6 +665,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         );
         let tract_ranges = self.tract_ranges(&mut tract_ids);
         let (categories, category_ranges) = self.category_ranges(estimates);
+        let mut sums = CategoryStore::<CID, f64>::with_capacity(categories.len());
 
         // Remove all tract_ids from the tree (except the first)
         // We will add tract_ids to the tree again, as we loop through the psus
@@ -671,16 +673,6 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         for tract_id in tract_ids.iter().skip(first_range.end) {
             tree.remove_unit(*tract_id);
         }
-
-        let mut tract_neighbours: Vec<&Tract<TID, PID, CID>> = Vec::with_capacity(
-            self.psus
-                .get_max_psu()
-                .expect("max psu to exist")
-                .nn_size()
-                .get()
-                .to_usize()
-                .expect("u32 -> usize"),
-        );
 
         // loop from smallest to largest psu
         // We should calculate the covariance of category A and B by including the tracts that
@@ -710,35 +702,55 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             // Thus, instead of psu_outer->cat_outer->psu_inner->cat_inner->tracts, we go
             // psu_outer->tracts->cat_outer->psu_inner->cat_inner.
 
-            // Set searcher size
-            searcher.set_nominal_size((*psu.nn_size()).try_into().expect("u32 -> usize"));
+            // Set searcher size .. subtract 1 b/c we skip self
+            let nominal_size: NonZeroUsize = (psu.nn_size().get() - 1)
+                .to_usize()
+                .expect("u32 -> usize")
+                .try_into()
+                .expect("non zero");
+            searcher.set_nominal_size(nominal_size);
 
             for tract_id in &tract_ids[..range_end] {
                 let tract = self.tracts.get(tract_id).expect("tract to exist");
-                tract_neighbours.clear();
 
                 searcher
-                    .reset_from_point(tree.data().coords(*tract_id))
-                    .expect("size to match")
+                    .reset_from_unit(tree.data(), *tract_id)
+                    .expect("unit to exist in data")
                     .search(&tree)
                     .expect("neighbours to be found");
-                tract_neighbours.extend(
-                    searcher
-                        .neighbours()
-                        .iter()
-                        .map(|n| self.tracts.get(&n.id()).expect("tract to exist")),
-                );
+
+                // Start by summing all categories .. we can skip any 0 sum category as cov
+                // contribution will be 0
+                sums.clear();
+                for cat in &categories[category_ranges[psu_ord].start..] {
+                    if let Some(ct) = tract.totals().get(cat) {
+                        sums.add_value((*cat, *ct));
+                    }
+                }
+                tract.totals().iter().for_each(|&ct| {
+                    sums.add_value(ct);
+                });
+                for neighbour in searcher.neighbours().iter().map(Neighbour::id) {
+                    let tract_neighbour = self.tracts.get(&neighbour).expect("tract to exist");
+                    for cat in &categories[category_ranges[psu_ord].start..] {
+                        if let Some(ct) = tract_neighbour.totals().get(cat) {
+                            sums.add_value((*cat, *ct));
+                        }
+                    }
+                }
 
                 // Outer loop of cats from current psu
                 for cat_ord in category_ranges[psu_ord].clone() {
                     let cat_curr = &categories[cat_ord];
-                    let mean_curr = tract_neighbours
-                        .iter()
-                        .map(|tract| tract.totals().get(cat_curr).copied().unwrap_or(0.0))
-                        .sum::<f64>()
-                        / psu_nn;
-                    let deviance_curr =
-                        tract.totals().get(cat_curr).copied().unwrap_or(0.0) - mean_curr;
+                    let deviance_curr = {
+                        // If all units are 0, the covs will be 0
+                        let mean = match sums.get(cat_curr).copied() {
+                            Some(sum) if sum > 0.0 => sum / psu_nn,
+                            _ => continue,
+                        };
+                        let val = tract.totals().get(cat_curr).copied().unwrap_or(0.0);
+                        val - mean
+                    };
 
                     // First we calculate for the current category
                     *cov_mat
@@ -747,13 +759,16 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
                     // Then we calculate for other categories
                     for cat_other in categories[(cat_ord + 1)..].iter() {
-                        let mean_other = tract_neighbours
-                            .iter()
-                            .map(|tract| tract.totals().get(cat_other).copied().unwrap_or(0.0))
-                            .sum::<f64>()
-                            / psu_nn;
-                        let deviance_other =
-                            tract.totals().get(cat_other).copied().unwrap_or(0.0) - mean_other;
+                        let deviance_other = {
+                            // If all units are 0, the covs will be 0
+                            let mean = match sums.get(cat_other).copied() {
+                                Some(sum) if sum > 0.0 => sum / psu_nn,
+                                _ => continue,
+                            };
+                            let val = tract.totals().get(cat_other).copied().unwrap_or(0.0);
+                            val - mean
+                        };
+
                         *cov_mat
                             .get_mut((cat_curr, cat_other))
                             .expect("cats to exist") += deviance_curr * deviance_other;

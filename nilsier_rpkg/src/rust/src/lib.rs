@@ -16,17 +16,11 @@
 
 mod sexp;
 
-use std::num::{
-    NonZeroU32,
-    NonZeroUsize,
-};
+use std::num::NonZeroU32;
 
 use envisim_utils::matrix::Dimensions;
 use envisim_utils::sampling_options::SpreadingOptions;
-use envisim_utils::utils::{
-    PointSet,
-    SliceView,
-};
+use envisim_utils::utils::SliceView;
 use nilsier::psu::PsuHeader;
 use nilsier::tract::{
     Area,
@@ -40,7 +34,6 @@ use nilsier::{
     Nils,
 };
 use num_traits::ToPrimitive;
-use rustc_hash::FxHashMap;
 use savvy::{
     ListSexp,
     OwnedIntegerSexp,
@@ -53,71 +46,148 @@ use savvy::{
 };
 
 use crate::sexp::*;
+use crate::spreading_data::*;
+use crate::tract_id::*;
 
-/// Struct mapping matrix with ids
-#[must_use]
-struct SpreadingData {
-    /// internal ids sexp
-    ids_vec: IntegerSexpFatPtr,
-    /// internal ids
-    ids: FxHashMap<i32, usize>,
-    /// data in matrix form
-    data: RMatrix,
+mod tract_id {
+    //! Tract id module
+
+    use std::cmp::Ordering;
+    use std::fmt::{
+        Display,
+        Formatter,
+        Result as fmtResult,
+    };
+    use std::hash::{
+        Hash,
+        Hasher,
+    };
+
+    use crate::sexp::*;
+
+    /// Id pair
+    #[derive(Copy, Clone, Debug)]
+    pub struct TractId {
+        /// Internal id (order)
+        internal: usize,
+        /// Id given by user
+        id: i32,
+    }
+    impl TractId {
+        /// Return the internal id order
+        #[inline]
+        pub fn internal(&self) -> usize { self.internal }
+        /// Return the id
+        #[expect(dead_code, reason = "accessor")]
+        #[inline]
+        pub fn id(&self) -> i32 { self.id }
+        /// Constructs an iterator from an `sexp` of ids
+        #[inline]
+        pub fn from_sexp(
+            sexp: &IntegerSexpFatPtr,
+        ) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + Clone + use<'_> {
+            sexp.iter().copied().enumerate().map(Into::into)
+        }
+    }
+    impl From<(usize, i32)> for TractId {
+        #[inline]
+        fn from((internal, id): (usize, i32)) -> Self { Self { internal, id } }
+    }
+    impl Eq for TractId {}
+    impl PartialEq for TractId {
+        #[inline]
+        fn eq(&self, other: &Self) -> bool { self.id == other.id }
+    }
+    impl Ord for TractId {
+        #[inline]
+        fn cmp(&self, other: &Self) -> Ordering { self.id.cmp(&other.id) }
+    }
+    impl PartialOrd for TractId {
+        #[inline]
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    }
+    impl Hash for TractId {
+        #[inline]
+        fn hash<H>(&self, state: &mut H)
+        where
+            H: Hasher,
+        {
+            self.id.hash(state);
+        }
+    }
+    impl Display for TractId {
+        #[inline]
+        fn fmt(&self, f: &mut Formatter) -> fmtResult {
+            write!(f, "TractId{{ id: {}, ord: {} }}", self.id, self.internal)
+        }
+    }
 }
-impl SpreadingData {
-    /// Constructs new
-    #[inline]
-    fn new(list: TractList) -> Option<Self> {
-        list.auxiliaries.map(|data| {
-            let ids: FxHashMap<i32, usize> = list
-                .tracts
-                .iter()
-                .enumerate()
-                .map(|(i, id)| (*id, i))
-                .collect();
-            Self {
-                ids,
-                ids_vec: list.tracts,
+
+mod spreading_data {
+    //! Spreading data module
+
+    use std::num::NonZeroUsize;
+
+    use envisim_utils::matrix::Dimensions;
+    use envisim_utils::utils::PointSet;
+
+    use super::TractList;
+    use crate::sexp::*;
+    use crate::tract_id::*;
+
+    /// Struct mapping matrix with ids
+    #[must_use]
+    pub struct SpreadingData {
+        /// ids
+        ids: IntegerSexpFatPtr,
+        /// data in matrix form
+        data: RMatrix,
+    }
+    impl SpreadingData {
+        /// Constructs new
+        #[inline]
+        pub fn new(list: TractList) -> Option<Self> {
+            list.auxiliaries.map(|data| Self {
+                ids: list.tracts,
                 data,
-            }
-        })
+            })
+        }
+        /// Returns an iterator over the ids
+        #[inline]
+        pub fn id_iter(
+            &self,
+        ) -> impl ExactSizeIterator<Item = TractId> + DoubleEndedIterator + use<'_> {
+            TractId::from_sexp(&self.ids)
+        }
+        /// Returns true if `id` exists in the collection
+        #[inline]
+        pub fn contains(&self, id: TractId) -> bool { id.internal() < self.ids.len() }
     }
-    /// Returns an iterator over the ids
-    #[inline]
-    fn id_iter(&self) -> impl ExactSizeIterator<Item = i32> + DoubleEndedIterator + use<'_> {
-        self.ids_vec.iter().copied()
-    }
-    /// Returns true if `id` exists in the collection
-    #[inline]
-    fn contains(&self, id: i32) -> bool { self.ids.contains_key(&id) }
-    /// Returns the position of a specific `id`
-    #[inline]
-    fn position(&self, id: i32) -> Option<usize> { self.ids.get(&id).copied() }
-}
 
-impl PointSet for SpreadingData {
-    type Value = f64;
-    type Id = i32;
-    #[inline]
-    fn len(&self) -> NonZeroUsize { self.data.nrow() }
-    #[inline]
-    fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + DoubleEndedIterator {
-        self.id_iter()
-    }
-    #[inline]
-    fn dimensions(&self) -> NonZeroUsize { self.data.ncol() }
-    #[inline]
-    fn contains(&self, id: Self::Id) -> bool { self.contains(id) }
-    #[inline]
-    fn get_coord(&self, id: Self::Id, dim: usize) -> Option<Self::Value> {
-        self.position(id).map(|row| self.data[(row, dim)])
-    }
-    #[inline]
-    fn get_coords(
-        &self,
-        id: Self::Id,
-    ) -> Option<impl ExactSizeIterator<Item = &Self::Value> + DoubleEndedIterator> {
-        self.position(id).and_then(|row| self.data.get_coords(row))
+    impl PointSet for SpreadingData {
+        type Value = f64;
+        type Id = TractId;
+        #[inline]
+        fn len(&self) -> NonZeroUsize { self.data.nrow() }
+        #[inline]
+        fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + DoubleEndedIterator {
+            self.id_iter()
+        }
+        #[inline]
+        fn dimensions(&self) -> NonZeroUsize { self.data.ncol() }
+        #[inline]
+        fn contains(&self, id: Self::Id) -> bool { self.contains(id) }
+        #[inline]
+        fn get_coord(&self, id: Self::Id, dim: usize) -> Option<Self::Value> {
+            self.data.get_coord(id.internal(), dim)
+        }
+        #[inline]
+        fn get_coords(
+            &self,
+            id: Self::Id,
+        ) -> Option<impl ExactSizeIterator<Item = &Self::Value> + DoubleEndedIterator> {
+            self.data.get_coords(id.internal())
+        }
     }
 }
 
@@ -173,7 +243,7 @@ impl PsuList {
         cap: usize,
         frame_area: Area,
         tract_area: Area,
-    ) -> savvy::Result<Nils<i32, i32, i32>> {
+    ) -> savvy::Result<Nils<i32, i32, TractId>> {
         let headers: Vec<PsuHeader<i32>> = self
             .psus
             .iter()
@@ -286,12 +356,11 @@ impl TractList {
     }
     /// Add tracts to `Nils`
     #[inline]
-    fn nils<CID>(&self, nils: &mut Nils<i32, CID, i32>) -> savvy::Result<()> {
+    fn nils<CID>(&self, nils: &mut Nils<i32, CID, TractId>) -> savvy::Result<()> {
         nils.add_tracts(
-            self.tracts
-                .iter()
+            TractId::from_sexp(&self.tracts)
                 .zip(self.psus.iter())
-                .map(|(tract, psu)| TractHeaderEntry::new(*tract, *psu)),
+                .map(|(tract, psu)| TractHeaderEntry::new(tract, *psu)),
         )?;
         Ok(())
     }
@@ -346,13 +415,15 @@ impl TractEntryList {
     }
     /// Add tract entries to `Nils`
     #[inline]
-    fn nils<PID>(&self, nils: &mut Nils<PID, i32, i32>) -> savvy::Result<()> {
+    fn nils<PID>(&self, nils: &mut Nils<PID, i32, TractId>) -> savvy::Result<()> {
         let cats = self.categories.data();
         let dws = self.dws.data();
         let values = self.values.data();
 
         for (i, tract) in self.tracts.iter().enumerate() {
-            nils.add_value_entry(TractValueEntry::new(*tract, cats[i], dws[i], values[i])?)?;
+            // Hacky as tract value entry doesnt need the internal part of the tract id
+            let tid = TractId::from((0_usize, *tract));
+            nils.add_value_entry(TractValueEntry::new(tid, cats[i], dws[i], values[i])?)?;
         }
 
         Ok(())
