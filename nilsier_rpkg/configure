@@ -192,6 +192,7 @@ EOF
 # catch DEBUG envvar, which is passed from pkgbuild::compile_dll()
 if [ "${DEBUG}" = "true" ]; then
   PROFILE=dev
+  # PROFILE=profiling
 else
   PROFILE=release
 fi

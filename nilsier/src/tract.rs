@@ -237,20 +237,17 @@ pub struct Tract<TID, PID, CID> {
     psu_id: PID,
     /// Category totals
     totals: CategoryStore<CID, f64>,
-    /// Tract area
-    area: Area,
 }
 impl<TID, PID, CID> Tract<TID, PID, CID> {
     /// Constructs a new tract info container
     #[inline]
-    pub fn new(header: TractHeaderEntry<TID, PID>, area: Area) -> Self {
+    pub fn new(header: TractHeaderEntry<TID, PID>) -> Self {
         let TractHeaderEntry { tract_id, psu_id } = header;
         let totals = CategoryStore::new();
         Self {
             tract_id,
             psu_id,
             totals,
-            area,
         }
     }
     /// Returns the identifier of the tract.
@@ -259,19 +256,16 @@ impl<TID, PID, CID> Tract<TID, PID, CID> {
     /// Returns the smallest PSU that includes this tract.
     #[inline]
     pub fn psu_id(&self) -> &PID { &self.psu_id }
-    /// Returns the area of the tract
-    #[inline]
-    pub fn area(&self) -> &Area { &self.area }
     /// Returns the plot values of the tract.
     #[inline]
     pub fn totals(&self) -> &CategoryStore<CID, f64> { &self.totals }
     /// Adds an entry to the tract
     #[inline]
-    pub fn add(&mut self, entry: TractValueEntry<TID, CID>)
+    pub fn add(&mut self, entry: TractValueEntry<TID, CID>, area: &Area)
     where
         CID: Ord,
     {
-        let value = entry.weighted_value() / self.area.get();
+        let value = entry.weighted_value() / area.get();
         self.totals.add_value((entry.cat_id, value));
     }
 }
@@ -279,20 +273,27 @@ impl<TID, PID, CID> Borrow<TID> for Tract<TID, PID, CID> {
     #[inline]
     fn borrow(&self) -> &TID { &self.tract_id }
 }
+impl<TID, PID, CID> From<TractHeaderEntry<TID, PID>> for Tract<TID, PID, CID> {
+    #[inline]
+    fn from(header: TractHeaderEntry<TID, PID>) -> Self { Tract::new(header) }
+}
 
 /// A set of tracts
 #[must_use]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TractStore<TID, PID, CID> {
     /// Set of tracts
     tracts: FxHashMap<TID, Tract<TID, PID, CID>>,
+    /// Tract area
+    tract_area: Area,
 }
 impl<TID, PID, CID> TractStore<TID, PID, CID> {
     /// Constructs a new, empty, store with some allocated `capacity`.
     #[inline]
-    pub fn with_capactity(capacity: usize) -> Self {
+    pub fn with_capactity(capacity: usize, tract_area: Area) -> Self {
         Self {
             tracts: FxHashMap::with_capacity_and_hasher(capacity, FxBuildHasher),
+            tract_area,
         }
     }
     /// Inserts a `tract` into the store.
@@ -335,6 +336,9 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
             .ok_or_else(|| TractError::TractIdNotFound(tract_id.to_string()))?;
         Ok(tract.totals().get(cat_id).copied().unwrap_or(0.0))
     }
+    /// Returns the area of a tract
+    #[inline]
+    pub fn area(&self) -> &Area { &self.tract_area }
     /// Returns an iterator over the tracts.
     #[must_use]
     #[inline]
@@ -359,9 +363,10 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
         CID: Ord,
     {
         let tract_id = *entry.tract_id();
+        let area = *self.area();
         self.tracts
             .get_mut(&tract_id)
-            .map(|tract| tract.add(entry))
+            .map(|tract| tract.add(entry, &area))
             .ok_or(TractError::TractIdNotFound(tract_id.to_string()))?;
         Ok(())
     }

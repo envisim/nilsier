@@ -55,7 +55,6 @@ use crate::psu::{
 use crate::tract::{
     Area,
     Tract,
-    TractHeaderEntry,
     TractStore,
     TractValueEntry,
 };
@@ -82,8 +81,8 @@ type NilsResult<T> = Result<T, NilsError>;
 pub enum CovarianceStrategy {
     /// Assumes the sample(s) were drawn using SRS.
     SimpleRandomSample,
-    /// Uses the nearest neighbour variance estimation.
-    NearestNeighbour,
+    /// Uses the nearest neighbours variance estimation.
+    NearestNeighbours,
 }
 /// Contains information of covariance between category id-pairs
 #[must_use]
@@ -115,6 +114,7 @@ impl<CID> CovarianceMatrix<CID> {
         );
         let mut iter = psu_store.category_iter();
         while let Some((cats_small, _)) = iter.next() {
+            cov_mat.insert((cats_small, cats_small).into(), 0.0);
             for (cats_large, _) in iter.clone() {
                 cov_mat.insert((cats_small, cats_large).into(), 0.0);
             }
@@ -154,13 +154,35 @@ impl<CID> CovarianceMatrix<CID> {
     {
         self.cov_mat.get_mut(&cat_pair.into())
     }
+    /// Sets the covaraince of a `cat_pair`.
+    /// # Panics
+    /// Panic implies a bug.
+    #[inline]
+    fn set<PAIR>(&mut self, cat_pair: PAIR, cov: f64)
+    where
+        CID: Hash + Eq,
+        PAIR: Into<CatIdPair<CID>>,
+    {
+        *self
+            .cov_mat
+            .get_mut(&cat_pair.into())
+            .expect("cat_pair to exist") = cov;
+    }
+
     /// Returns the variance, i.e. the sum of the covariance matrix
     #[must_use]
     #[inline]
-    pub fn variance(&self) -> f64 { self.cov_mat.values().sum() }
+    pub fn variance(&self) -> f64
+    where
+        CID: Eq,
+    {
+        self.cov_mat
+            .iter()
+            .map(|(pair, &val)| if pair.is_same() { val } else { val * 2.0 })
+            .sum()
+    }
     /// Returns a tuple containing the covariance matrix, and the categories in their order of
     /// appearance in the matrix.
-    #[expect(clippy::integer_division, reason = "have exact solution")]
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
     pub fn to_matrix(&self) -> (Matrix<f64>, Vec<CID>)
@@ -172,7 +194,7 @@ impl<CID> CovarianceMatrix<CID> {
         cats.dedup();
         assert_eq!(
             cats.len(),
-            self.n_cats.get() * (self.n_cats.get() + 1) / 2,
+            self.n_cats.get(),
             "store does not contain correct amount of categories"
         );
 
@@ -181,7 +203,7 @@ impl<CID> CovarianceMatrix<CID> {
         for i in 0..self.n_cats.get() {
             cm[(i, i)] = self.get((cats[i], cats[i])).expect("cat to exist");
 
-            for j in 1..i {
+            for j in (i + 1)..self.n_cats.get() {
                 cm[(i, j)] = self.get((cats[i], cats[j])).expect("cat to exist");
                 cm[(j, i)] = cm[(i, j)];
             }
@@ -229,6 +251,8 @@ pub struct Nils<PID, CID, TID> {
     psus: PsuStore<PID, CID>,
     /// Tracts
     tracts: TractStore<TID, PID, CID>,
+    /// Frame area
+    frame_area: Area,
 }
 impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// Initialise with psus and sizes. `capacity` determines the number of tracts to reserve space
@@ -236,15 +260,31 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// # Errors
     /// Returns an error if the iterators does not match in size.
     #[inline]
-    pub fn new<I, J>(psus: I, nn_sizes: Option<J>, capacity: usize) -> NilsResult<Self>
+    pub fn new<I, J, A1, A2>(
+        psus: I,
+        nn_sizes: Option<J>,
+        frame_area: A1,
+        tract_area: A2,
+        capacity: usize,
+    ) -> NilsResult<Self>
     where
         PID: Ord,
         I: ExactSizeIterator<Item = PsuHeader<PID>>,
         J: ExactSizeIterator<Item = NonZeroU32>,
+        A1: TryInto<Area>,
+        A1::Error: Into<TractError>,
+        A2: TryInto<Area>,
+        A2::Error: Into<TractError>,
     {
+        let frame_area = frame_area.try_into().map_err(Into::into)?;
+        let tract_area = tract_area.try_into().map_err(Into::into)?;
         let psus = PsuStore::new(psus, nn_sizes)?;
-        let tracts = TractStore::with_capactity(capacity);
-        Ok(Self { psus, tracts })
+        let tracts = TractStore::with_capactity(capacity, tract_area);
+        Ok(Self {
+            psus,
+            tracts,
+            frame_area,
+        })
     }
     /// Add a category to a psu
     /// # Errors
@@ -278,23 +318,22 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// Returns an error if the `tract_area` cannot be constructed, if a PSU ID is not found, or if a
     /// tract ID duplicate is found.
     #[inline]
-    pub fn add_tracts<I, A>(&mut self, tracts: I, tract_area: A) -> NilsResult<()>
+    pub fn add_tracts<I>(&mut self, tracts: I) -> NilsResult<()>
     where
         PID: Display + Eq,
         TID: Copy + Display + Eq + Hash,
-        I: Iterator<Item = TractHeaderEntry<TID, PID>>,
-        A: TryInto<Area>,
-        A::Error: Into<TractError>,
+        I: Iterator,
+        I::Item: Into<Tract<TID, PID, CID>>,
     {
-        let area = tract_area.try_into().map_err(Into::into)?;
         for tract in tracts {
+            let tract = tract.into();
             // Assert that the psu is valid
             if self.psus.get_psu(tract.psu_id()).is_none() {
                 return Err(PsuError::PsuIdNotFound(tract.psu_id().to_string()).into());
             }
 
             // Insert and replace
-            self.tracts.insert(Tract::new(tract, area))?;
+            self.tracts.insert(tract)?;
         }
         Ok(())
     }
@@ -333,7 +372,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// 3. Number of tracts with positive values in a category.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn estimate_per_category(&self, frame_area: Area) -> EstimatePerCategory<CID>
+    pub fn estimate_per_category(&self) -> EstimatePerCategory<CID>
     where
         CID: Copy + Ord,
     {
@@ -368,7 +407,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         for psu in self.psus.iter() {
             let size = f64::from(psu.size().get());
-            let area_frac = frame_area.get() / size;
+            let area_frac = self.frame_area.get() / size;
 
             for cat_id in psu.categories_iter() {
                 *epc.estimate_per_category
@@ -429,40 +468,66 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         ranges
     }
+    /// Sorts the `category_ids` and constructs category ranges over the psus
+    #[must_use]
+    #[inline]
+    fn category_ranges(&self, estimates: &EstimatePerCategory<CID>) -> (Vec<CID>, Vec<Range<usize>>)
+    where
+        CID: Copy + Ord,
+    {
+        let mut categories: Vec<CID> =
+            Vec::with_capacity(self.psus.iter().map(|psu| psu.categories_len()).sum());
+        let mut ranges: Vec<Range<usize>> = Vec::with_capacity(self.psus.len());
+
+        for psu in self.psus.iter() {
+            let start = categories.len();
+            categories.extend(psu.categories_iter().filter_map(|cid| {
+                let pos_tracts = *estimates.positive_tracts_per_category.get(cid)?;
+                (pos_tracts > 0).then_some(*cid)
+            }));
+            let end = categories.len();
+            ranges.push(start..end);
+        }
+
+        (categories, ranges)
+    }
+
     /// Returns an estimated covariance matrix.
     /// # Errors
     /// Returns an error if the psus doesn't contain any categories, or if the `frame_area` is
     /// invalid.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn covariance_estimate<A>(&self, frame_area: A) -> NilsResult<CovarianceMatrix<CID>>
+    pub fn covariance_estimate(
+        &self,
+        estimates: &EstimatePerCategory<CID>,
+    ) -> NilsResult<CovarianceMatrix<CID>>
     where
         PID: Copy + Eq,
         CID: Copy + Hash + Ord,
         TID: Copy + Eq + Display + Hash,
-        A: TryInto<Area>,
-        A::Error: Into<TractError>,
     {
-        let frame_area = frame_area.try_into().map_err(Into::into)?;
         // Prepare covariance matrix structure
         let mut cov_mat = CovarianceMatrix::from_psustore(&self.psus)?;
+
         cov_mat.set_estimation_strategy(CovarianceStrategy::SimpleRandomSample);
-        // Prepare category sum container
-        let mut sums: CategoryStore<CID, f64> = self
-            .psus
-            .category_iter()
-            .map(|(cat_id, _)| *cat_id)
-            .collect();
+
         // Get vector of tract ids
         let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(tid, _)| *tid).collect();
         let tract_ranges = self.tract_ranges(&mut tract_ids);
+
+        // Prepare category sum container
+        let (categories, category_ranges) = self.category_ranges(estimates);
+        let mut sums: CategoryStore<CID, f64> = categories.iter().copied().collect();
 
         // loop from smallest to largest psu
         // We should calculate the covariance of category A and B by including the tracts that
         // are part of A and B (intersect). Hence, if A < B, then tracts in A should be counted.
         // We can do this by having an inner loop from the smallest category, where we identify
         // the tracts of this cat, and then comparing to all larger categories
-        for (psu_id, tract_range) in tract_ranges {
+        for (psu_ord, (psu_id, tract_range)) in tract_ranges.into_iter().enumerate() {
+            let tracts_subset = &tract_ids[..tract_range.end];
+
             // Successively add to the totals.
             for tract_id in &tract_ids[tract_range.clone()] {
                 let tract = self.tracts.get(tract_id).expect("tract id to exist");
@@ -473,50 +538,90 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
             let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
             let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
-            let area_frac = frame_area.get() / psu_size;
+            let area_frac = self.frame_area.get() / psu_size;
+            let area_const = area_frac * (psu_size / (psu_size - 1.0));
 
             // Outer loop of cats from current psu
-            for curr_cat in psu.categories_iter() {
+            for cat_ord in category_ranges[psu_ord].clone() {
+                let cat_curr = &categories[cat_ord];
+
                 // Values are non-negative -- a zero sum implies that all tracts are 0.0
-                let curr_mean = match sums.get(curr_cat).copied() {
+                let mean_curr = match sums.get(cat_curr).copied() {
                     Some(sum) if sum > 0.0 => sum / psu_size,
                     _ => continue,
                 };
 
-                // Inner loop of cats from larger psus
-                for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
-                    let large_psu_size = f64::from(large_psu.size().get());
-                    let large_area_frac = frame_area.get() / large_psu_size;
+                // First we calculate for the current category
+                let area_const_curr = area_const * area_frac;
+                let var_curr = tracts_subset
+                    .iter()
+                    .map(|tid| {
+                        (self.tracts.get_category_value(tid, cat_curr).unwrap_or(0.0) - mean_curr)
+                            .powi(2)
+                    })
+                    .sum::<f64>()
+                    * area_const_curr;
+                cov_mat.set((cat_curr, cat_curr), var_curr);
 
-                    for large_cat in large_psu.categories_iter() {
+                // Then we calculate for categories in current PSU.
+                // We clone so we dont have to visit the same category twice
+                for cat_small in &categories[cat_ord..category_ranges[psu_ord].end] {
+                    let mean_small = match sums.get(cat_small).copied() {
+                        Some(sum) if sum > 0.0 => sum / psu_size,
+                        _ => continue,
+                    };
+                    let var_small = tracts_subset
+                        .iter()
+                        .map(|tid| {
+                            let vc = self.tracts.get_category_value(tid, cat_curr).unwrap_or(0.0)
+                                - mean_curr;
+                            let vs = self
+                                .tracts
+                                .get_category_value(tid, cat_small)
+                                .unwrap_or(0.0)
+                                - mean_small;
+                            vc * vs
+                        })
+                        .sum::<f64>()
+                        * area_const_curr;
+                    cov_mat.set((cat_curr, cat_small), var_small);
+                }
+
+                // Finally we calculate for large categories
+                for psu_inner_ord in (psu_ord + 1)..self.psus.len() {
+                    let psu_size_large = self
+                        .psus
+                        .get_nth_psu(psu_inner_ord)
+                        .expect("psu to exist")
+                        .size()
+                        .get()
+                        .to_f64()
+                        .expect("u32 -> f64");
+                    let area_const_large = area_const * (self.frame_area.get() / psu_size_large);
+
+                    for cat_large in &categories[category_ranges[psu_inner_ord].clone()] {
                         // We're looking for mean in intersect set, hence psu_size is the mean size
-                        let large_mean = match sums.get(large_cat).copied() {
+                        let mean_large = match sums.get(cat_large).copied() {
                             Some(sum) if sum > 0.0 => sum / psu_size,
                             _ => continue,
                         };
 
-                        // Reference to correct cov mat entry
-                        let cov_mat_entry = cov_mat
-                            .get_mut((curr_cat, large_cat))
-                            .expect("cats to exist");
-
-                        for tract_id in &tract_ids[..tract_range.end] {
-                            let curr_deviance = self
-                                .tracts
-                                .get_category_value(tract_id, curr_cat)
-                                .unwrap_or(0.0)
-                                - curr_mean;
-                            let large_deviance = self
-                                .tracts
-                                .get_category_value(tract_id, large_cat)
-                                .unwrap_or(0.0)
-                                - large_mean;
-
-                            *cov_mat_entry += curr_deviance * large_deviance;
-                        }
-
-                        *cov_mat_entry *=
-                            area_frac * large_area_frac * (psu_size / (psu_size - 1.0));
+                        let var_large = tracts_subset
+                            .iter()
+                            .map(|tid| {
+                                let vc =
+                                    self.tracts.get_category_value(tid, cat_curr).unwrap_or(0.0)
+                                        - mean_curr;
+                                let vl = self
+                                    .tracts
+                                    .get_category_value(tid, cat_large)
+                                    .unwrap_or(0.0)
+                                    - mean_large;
+                                vc * vl
+                            })
+                            .sum::<f64>()
+                            * area_const_large;
+                        cov_mat.set((cat_curr, cat_large), var_large);
                     }
                 }
             }
@@ -533,23 +638,20 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// # Panics
     /// Panics if `u32` cannot be converted into `usize`.
     #[inline]
-    pub fn covariance_estimate_nn<A, P>(
+    pub fn covariance_estimate_nn<P>(
         &self,
-        frame_area: A,
+        estimates: &EstimatePerCategory<CID>,
         spreading: &SpreadingOptions<P>,
     ) -> NilsResult<CovarianceMatrix<CID>>
     where
         PID: Copy + Eq,
         CID: Copy + Hash + Ord,
         TID: Copy + Eq + Display + Hash,
-        A: TryInto<Area>,
-        A::Error: Into<TractError>,
         P: PointSet<Id = TID>,
     {
-        let frame_area = frame_area.try_into().map_err(Into::into)?;
         // Prepare covariance matrix structure
         let mut cov_mat = CovarianceMatrix::from_psustore(&self.psus)?;
-        cov_mat.set_estimation_strategy(CovarianceStrategy::NearestNeighbour);
+        cov_mat.set_estimation_strategy(CovarianceStrategy::NearestNeighbours);
         // Get vector of tract ids,
         let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(&tid, _)| tid).collect();
         // Create tree
@@ -561,6 +663,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             tree.data(),
         );
         let tract_ranges = self.tract_ranges(&mut tract_ids);
+        let (categories, category_ranges) = self.category_ranges(estimates);
 
         // Remove all tract_ids from the tree (except the first)
         // We will add tract_ids to the tree again, as we loop through the psus
@@ -569,13 +672,24 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             tree.remove_unit(*tract_id);
         }
 
+        let mut tract_neighbours: Vec<&Tract<TID, PID, CID>> = Vec::with_capacity(
+            self.psus
+                .get_max_psu()
+                .expect("max psu to exist")
+                .nn_size()
+                .get()
+                .to_usize()
+                .expect("u32 -> usize"),
+        );
+
         // loop from smallest to largest psu
         // We should calculate the covariance of category A and B by including the tracts that
         // are part of A and B (intersect). Hence, if A < B, then tracts in A should be counted.
         // We can do this by having an inner loop from the smallest category, where we identify
         // the tracts of this cat, and then comparing to all larger categories
-        for (psu_id, tract_range) in tract_ranges {
+        for (psu_ord, (psu_id, tract_range)) in tract_ranges.into_iter().enumerate() {
             let range_end = tract_range.end;
+
             // Anytime we are not in the first psu, we need to re-add the units to the tree
             if psu_id != first_psu {
                 for tract_id in &tract_ids[tract_range] {
@@ -587,7 +701,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
             let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
             let psu_nn = psu.nn_size().get().to_f64().expect("u32 -> f64");
-            let area_frac = frame_area.get() / psu_size;
+            let area_frac = self.frame_area.get() / psu_size;
 
             // In normal variance est, we loop through psus->cats->tracts.
             // This we can do since fetching tracts is not too expensive, so looping
@@ -600,67 +714,82 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             searcher.set_nominal_size((*psu.nn_size()).try_into().expect("u32 -> usize"));
 
             for tract_id in &tract_ids[..range_end] {
+                let tract = self.tracts.get(tract_id).expect("tract to exist");
+                tract_neighbours.clear();
+
                 searcher
                     .reset_from_point(tree.data().coords(*tract_id))
                     .expect("size to match")
                     .search(&tree)
                     .expect("neighbours to be found");
-
-                for curr_cat in psu.categories_iter() {
-                    let curr_mean = searcher
+                tract_neighbours.extend(
+                    searcher
                         .neighbours()
                         .iter()
-                        .map(|n| {
-                            self.tracts
-                                .get_category_value(&n.id(), curr_cat)
-                                .expect("curr_cat to exist in tract")
-                        })
+                        .map(|n| self.tracts.get(&n.id()).expect("tract to exist")),
+                );
+
+                // Outer loop of cats from current psu
+                for cat_ord in category_ranges[psu_ord].clone() {
+                    let cat_curr = &categories[cat_ord];
+                    let mean_curr = tract_neighbours
+                        .iter()
+                        .map(|tract| tract.totals().get(cat_curr).copied().unwrap_or(0.0))
                         .sum::<f64>()
                         / psu_nn;
-                    let curr_deviance = self
-                        .tracts
-                        .get_category_value(tract_id, curr_cat)
-                        .expect("curr_cat to exist in tract_id")
-                        - curr_mean;
+                    let deviance_curr =
+                        tract.totals().get(cat_curr).copied().unwrap_or(0.0) - mean_curr;
 
-                    for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
-                        for large_cat in large_psu.categories_iter() {
-                            let large_mean = searcher
-                                .neighbours()
-                                .iter()
-                                .map(|n| {
-                                    self.tracts
-                                        .get_category_value(&n.id(), large_cat)
-                                        .expect("large_cat to exist in tract")
-                                })
-                                .sum::<f64>()
-                                / psu_nn;
-                            let large_deviance = self
-                                .tracts
-                                .get_category_value(tract_id, large_cat)
-                                .expect("large_cat to exist in tract_id")
-                                - large_mean;
+                    // First we calculate for the current category
+                    *cov_mat
+                        .get_mut((cat_curr, cat_curr))
+                        .expect("cats to exist") += deviance_curr.powi(2);
 
-                            // Reference to correct cov mat entry
-                            *cov_mat
-                                .get_mut((curr_cat, large_cat))
-                                .expect("cats to exist") += curr_deviance * large_deviance;
-                        }
+                    // Then we calculate for other categories
+                    for cat_other in categories[(cat_ord + 1)..].iter() {
+                        let mean_other = tract_neighbours
+                            .iter()
+                            .map(|tract| tract.totals().get(cat_other).copied().unwrap_or(0.0))
+                            .sum::<f64>()
+                            / psu_nn;
+                        let deviance_other =
+                            tract.totals().get(cat_other).copied().unwrap_or(0.0) - mean_other;
+                        *cov_mat
+                            .get_mut((cat_curr, cat_other))
+                            .expect("cats to exist") += deviance_curr * deviance_other;
                     }
                 }
             }
 
-            for curr_cat in psu.categories_iter() {
-                // Smaller psu info
-                for large_psu in self.psus.superset_psu(&psu_id).expect("psu to exist") {
-                    // Larger psu info
-                    let large_psu_size = f64::from(large_psu.size().get());
-                    let large_area_frac = frame_area.get() / large_psu_size;
-                    for large_cat in large_psu.categories_iter() {
+            // Outer loop of cats from current psu
+            for cat_ord in category_ranges[psu_ord].clone() {
+                let cat_curr = &categories[cat_ord];
+                let area_const = area_frac * (psu_nn / (psu_nn - 1.0));
+
+                // Calculate for categories in current PSU.
+                let area_const_curr = area_const * area_frac;
+                for cat_small in categories[cat_ord..category_ranges[psu_ord].end].iter() {
+                    *cov_mat
+                        .get_mut((cat_curr, cat_small))
+                        .expect("cats to exist") *= area_const_curr;
+                }
+
+                // Calculate for categories in larger PSUs
+                for psu_inner_ord in (psu_ord + 1)..self.psus.len() {
+                    let psu_size_large = self
+                        .psus
+                        .get_nth_psu(psu_inner_ord)
+                        .expect("psu to exist")
+                        .size()
+                        .get()
+                        .to_f64()
+                        .expect("u32 -> f64");
+                    let area_const_large = area_const * (self.frame_area.get() / psu_size_large);
+
+                    for cat_large in &categories[category_ranges[psu_inner_ord].clone()] {
                         *cov_mat
-                            .get_mut((curr_cat, large_cat))
-                            .expect("cats to exist") *=
-                            area_frac * large_area_frac * (psu_nn / (psu_nn - 1.0));
+                            .get_mut((cat_curr, cat_large))
+                            .expect("cats to exist") *= area_const_large;
                     }
                 }
             }

@@ -3,34 +3,31 @@
 #' @description
 #' Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
 #'
-#' @param plot_data A data frame with information about observations at the plot level.
-#' Must contain (in order):
-#'   1. The tract ID (integer) of the parent tract.
-#'   2. The category ID (integer) recorded for the plot.
-#'   3. The design weight (double) for the plot, conditional on the tract.
-#'   4. The observed value of the target variable (double).
+#' @inheritParams prepare_psus
+#' @inheritParams prepare_categories
+#' @inheritParams prepare_tracts
+#' @inheritParams prepare_data
 #'
-#' @param tract_data A matrix with information about all sampled tracts,
-#' including those where no relevant categories were found.
-#' Must contain (in order):
-#'   1. The tract ID (integer) of each sampled tract.
-#'   2. The PSU collection ID (integer) of the smallest PSU that contains the tract.
-#'
-#' @param psus An ordered vector of PSU levels, from largest to smallest.
-#'
-#' @param category_psu_map A matrix describing the categories used in the design.
-#' Must contain (in order):
-#'   1. The category ID (integer), as used in `plot_data`.
-#'   2. The PSU collection ID (integer) of the smallest PSU in which the category is sampled.
-#'
-#' @param area The size of the area frame. Typically larger than the actual area of interest.
+#' @param frame_area The size of the area frame. Typically larger than the actual area of interest.
 #'
 #' @param tract_area The area of a tract, expressed in the same units as the target variable.
+#'
+#' @param variance_strategy The strategy for estimating variance. One of `"srs"` or
+#' `"nearest_neighbour"`.
 #'
 #' @details
 #' The function combines plot-level observations (`plot_data`), tract-level information
 #' (`tract_data`), PSU hierarchy (`psus`), and category assignments (`category_psu_map`) to estimate
 #' totals under the NILS sampling design.
+#'
+#' ## Variance estimation strategy
+#' If the `psus` were selected using a spatially balanced sampling design, the `"srs"` variance
+#' strategy often overestimates the variance.
+#'
+#' When using the `"nearest_neighbours"` strategy, a local neighbourhood variance is used.
+#' The neighbourhood size is either manually supplied or calculated from the psu sizes (see
+#' [prepare_psus()]). When calculated from the sizes, the PSUs scales linearly with the nearest
+#' neighbourhood size of the smallest PSU, given by `neighbourhood_size`.
 #'
 #' @returns A `NilsEstimate` object, essentially a data frame with one row per category and the
 #' following columns:
@@ -43,7 +40,7 @@
 #' }
 #'
 #' @examples
-#' obj = nils(plots, tracts, psus, category_psu_map);
+#' obj = nils(psus, category_psu_map, tracts, plots);
 #'
 #' @export
 nils = function(
@@ -61,32 +58,63 @@ nils = function(
   tracts     = prepare_tracts(tracts);
   data       = prepare_data(data);
 
-  frame_area = prepare_area(tract_area);
+  frame_area = prepare_area(frame_area);
   tract_area = prepare_area(tract_area);
 
-  if (!(variance_strategy %in% c("srs", "nearest_neighbour"))) {
+  if (!(variance_strategy %in% c("srs", "nearest_neighbours"))) {
     warning("unsupported variance strategy ... defaulting to 'srs'");
     variance_strategy = "srs";
   }
+  if (variance_strategy == "nearest_neighbours" && !("auxiliaries" %in% names(tracts))) {
+    warning(
+      "'nearest_neighbours' variance strategy requires auxiliaries to be provided",
+      " ... defaulting to 'srs'"
+    );
+    variance_strategy = "srs";
+  }
 
+  # Run algo
   obj = rust_nils_estimate(
     psus,
     categories,
     tracts,
     data,
-    tract_area,
     frame_area,
+    tract_area,
     variance_strategy
   );
 
-  return(.construct_nils(
-    obj,
-    psus = psus,
-    category_psu_map = category_psu_map,
-    area = area,
-    tract_area = tract_area,
-    balanced = FALSE
-  ));
+  # Construct NilsEstimate object
+  cat_ids = categories$category;
+
+  ne = data.frame(
+    cat_id = cat_ids,
+    est = obj$category_estimates,
+    var = diag(obj$category_covariances),
+    pos = obj$positive_tracts_per_category
+  );
+
+  colnames(ne) = c("Cat. ID", "Est. total", "Est. variance", "Positive tracts");
+
+  class(ne) = c("NilsEstimate2", class(ne));
+
+  attr(ne, "psus")              = psus;
+  attr(ne, "categories")        = categories;
+  attr(ne, "frame_area")        = frame_area;
+  attr(ne, "tract_area")        = tract_area;
+  attr(ne, "variance_strategy") = variance_strategy;
+
+  attr(ne, "estimate")          = obj$estimate;
+  attr(ne, "variance")          = obj$variance;
+  attr(ne, "positive_tracts")   = obj$positive_tracts;
+  attr(ne, "filtered")          = FALSE;
+
+  covmat = obj$category_covariances;
+  rownames(covmat) = cat_ids;
+  colnames(covmat) = cat_ids;
+  attr(ne, "covmat") = covmat;
+
+  ne
 }
 
 #' @rdname nils
@@ -98,7 +126,10 @@ NilsEstimate = function(
   category_psu_map,
   area = 46519242.1175867,
   tract_area = 196 * 100 * pi
-) nils(psus, category_psu_map, tract_data, plot_data, area, tract_area, "srs");
+) {
+  warning("NilsEstimate() was deprecated in 0.2.0, in favor of nils()");
+  nils(psus, category_psu_map, tract_data, plot_data, area, tract_area, "srs")
+}
 
 #' @rdname nils
 #' @export
@@ -112,6 +143,7 @@ NilsEstimateBalanced = \(
   tract_area = 196 * 100 * pi,
   size_of_neighbourhood = 4L
 ) {
+  warning("NilsEstimateBalanced() was deprecated in 0.2.0, in favor of nils()");
   tracts = as.matrix(tract_data);
   tracts = list(
     tract       = tracts[, 1],
@@ -119,40 +151,4 @@ NilsEstimateBalanced = \(
     auxiliaries = auxiliaries
   );
   nils(psus, category_psu_map, tracts, plot_data, area, tract_area, "nearest_neighbour");
-}
-
-.construct_nils = function(obj, ...) {
-  params = list(...);
-
-  cat_ids = params$category_psu_map[, 1];
-  cat_names = rownames(params$category_psu_map);
-
-  ne = data.frame(
-    cat_id = cat_ids,
-    est = obj$cat_estimates,
-    var = diag(obj$cat_covmat),
-    pos = obj$positive_tracts_per_cat
-  );
-
-  colnames(ne) = c("Cat. ID", "Est. total", "Est. variance", "Positive tracts");
-  rownames(ne) = cat_names;
-
-  class(ne) = c("NilsEstimate", class(ne));
-
-  for (p in names(params)) {
-    attr(ne, p) = params[[p]];
-  }
-
-  attr(ne, "estimate") = obj$estimate;
-  attr(ne, "variance") = obj$variance;
-  attr(ne, "filtered") = FALSE;
-
-  covmat = obj$cat_covmat;
-  rownames(covmat) = cat_ids;
-  colnames(covmat) = cat_ids;
-  attr(ne, "covmat") = covmat;
-
-  attr(ne, "nonnil_tracts") = obj$nonnil_tracts;
-
-  return(ne);
 }

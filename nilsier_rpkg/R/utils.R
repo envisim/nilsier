@@ -1,4 +1,6 @@
 #' Converts `obj` to a data.frame, or stops.
+#' @keywords internal
+#' @noRd
 .to_named_df = function(obj, columns, optional_columns = NULL, name = "input") {
   if (is.data.frame(obj)) {
     # Assert that data frame contains all columns
@@ -29,7 +31,7 @@
       return(as.data.frame(obj));
     }
   } else if (is.matrix(obj)) {
-    lobj = lapply(seq_len(ncol(obj)), \(i) obj[, i]);
+    lobj = lapply(seq_len(ncol(obj)), \(i) obj[, i, drop = TRUE]);
     return(.to_named_df(lobj, columns, optional_columns, name));
   }
 
@@ -37,31 +39,41 @@
 }
 
 #' Converts `obj` to a list, or stops.
+#' @keywords internal
+#' @noRd
 .to_list = function(obj, name = "input") {
   if (is.list(obj)) {
     return(obj);
   } else if (is.matrix(obj)) {
-    return(lapply(seq_len(ncol(obj)), \(i) obj[, i]));
+    return(lapply(seq_len(ncol(obj)), \(i) obj[, i, drop = TRUE]));
   }
   stop(name, " is not a list (or data.frame)");
 }
 
 #' Asserts that `obj` contains a named object `item`.
+#' @keywords internal
+#' @noRd
 .assert_contains_item = function(obj, item, name = "input") {
   if (!(item %in% names(obj))) stop(name, " must contain an item (or column) named '", item, "'");
 }
 
 #' Asserts that `vec` has correct length.
+#' @keywords internal
+#' @noRd
 .assert_len = function(vec, len, name = "input") {
   if (len != length(vec)) stop(name, " have incorrect length (should be ", len, ")");
 }
 
 #' Asserts that `vec` contains no NA values.
+#' @keywords internal
+#' @noRd
 .assert_contains_no_na = function(vec, name = "input") {
   if (any(is.na(vec))) stop(name, " contains NA values");
 }
 
 #' Asserts that `vec` is numeric.
+#' @keywords internal
+#' @noRd
 .assert_numeric = function(vec, name = "input") {
   if (storage.mode(vec) != "double" && storage.mode(vec) != "integer") {
     stop(name, " is not numeric");
@@ -69,56 +81,53 @@
 }
 
 #' Asserts that `vec` is double.
+#' @keywords internal
+#' @noRd
 .assert_double = function(vec, name = "input") {
   if (storage.mode(vec) != "double") stop(name, " is not double");
 }
 
 #' Asserts that `vec` is integer.
+#' @keywords internal
+#' @noRd
 .assert_integer = function(vec, name = "input") {
   if (storage.mode(vec) != "integer") stop(name, " is not integer");
 }
 
 #' Assert that `vec` is numeric and contains no NA values
+#' @keywords internal
+#' @noRd
 .assert_numeric_contains_no_na = function(vec, name = "input") {
   .assert_numeric(vec, name);
   .assert_contains_no_na(vec, name);
 }
 
 #' Assert that `vec` is double and contains no NA values
+#' @keywords internal
+#' @noRd
 .assert_double_contains_no_na = function(vec, name = "input") {
   .assert_double(vec, name);
   .assert_contains_no_na(vec, name);
 }
 
 #' Assert that `vec` is integer and contains no NA values
+#' @keywords internal
+#' @noRd
 .assert_integer_contains_no_na = function(vec, name = "input") {
   .assert_integer(vec, name);
   .assert_contains_no_na(vec, name);
 }
 
-#' Prepare a PSU object
+#' Calculates the nearest neighbour sizes (nn_sizes)
 #'
-#' @description
-#' Prepare a PSU object, which can be either a data frame or a list.
-#'
-#' @details
-#' If the items (or columns) are unnamed, the order of the items (or columns) are assumed to be
-#' according to the order given by the parameter list.
-#' If a matrix is supplied, the order is also assumed to be in the parameter list order.
-#'
-#' @param psus A data frame, list, or a matrix containing the PSUs:
+#' @param psus A data frame
 #' \describe{
 #'   \item{psu}{the PSU identifier (integer).}
 #'   \item{size}{the number of tracts in the PSU (integer).}
-#'   \item{nn_size}{(optional) the neighbourhood size to use (integer > `1L`). If not given, it can
-#'                  be derived from `neighbourhood_size`.}
 #' }
 #'
 #' @param neighbourhood_size The default neighbourhood size to use for the smallest PSU
 #' (integer > `1L`). The neighbourhood size for larger PSUs scales linearly.
-#'
-#' @param tracts A list of tracts and their corresponding PSUs, defined according to the return
-#' value of [`prepare_tracts`] or [`tracts`].
 #'
 #' @returns A data frame
 #' \describe{
@@ -127,7 +136,58 @@
 #'   \item{nn_size}{the neighbourhood size to use (integer).}
 #' }
 #'
-#' @example
+#' @keywords internal
+#' @noRd
+.calculate_nearest_neighbours = function(psus, neighbourhood_size = 4L) {
+  ns = as.integer(neighbourhood_size);
+  if (is.null(ns)) {
+    warning("'neighbourhood_size' is NULL ... setting to 4L");
+    ns = 4L;
+  } else if (ns <= 1L) {
+    warning("'neighbourhood_size' is <= 2L ... setting to 4L");
+    ns = 4L;
+  }
+
+  # derive from neighbourhood_size
+  psus$nn_size = ns;
+  psu_seq = seq_along(psus$psu)[order(psus$size)];
+  min_size = psus$size[psu_seq[1L]];
+
+  for (i in psu_seq[2L:nrow(psus)]) {
+    size = psus$size[i];
+    psus$nn_size[i] = as.integer(round(ns * size / min_size));
+  }
+
+  psus
+}
+
+#' Prepare a PSU object
+#'
+#' @description
+#' Prepare a PSU object, which can be either a data frame or a list.
+#'
+#' @param psus A data frame, list, or a matrix containing the PSUs:
+#' \describe{
+#'   \item{psu}{the PSU identifier (integer).}
+#'   \item{size}{the number of tracts in the PSU (integer).}
+#'   \item{nn_size}{(optional) the neighbourhood size to use (integer > `1L`). If not given, it can
+#'                  be derived from `neighbourhood_size`.}
+#' }
+#' If the columns (or items) are unnamed, or if a matrix is supplied, the order of the columns
+#' (or items) are assumed to follow the order given by the list above.
+#' If a matrix is supplied, the order is also assumed to be in the parameter list order.
+#'
+#' @param neighbourhood_size The default neighbourhood size to use for the smallest PSU
+#' (integer > `1L`). The neighbourhood size for larger PSUs scales linearly.
+#'
+#' @returns A data frame
+#' \describe{
+#'   \item{psu}{the PSU identifier (integer).}
+#'   \item{size}{the number of tracts in the PSU (integer).}
+#'   \item{nn_size}{the neighbourhood size to use (integer).}
+#' }
+#'
+#' @examples
 #' prepped_psus = prepare_psus(psus, neighbourhood_size = 4L);
 #'
 #' @family prepare
@@ -140,33 +200,47 @@ prepare_psus = function(psus, neighbourhood_size = 4L) {
   storage.mode(psus$psu) = "integer";
   storage.mode(psus$size) = "integer";
 
-  if ("nn_size" %in% names(psus)) {
-    .assert_numeric(psus$nn_size, "'nn_size'");
-    if (!all(2L <= psus$nn_size)) # using all to catch NAs and NaNs
-      stop("'nn_size' must be an integer > 1L");
-    storage.mode(psus$nn_size) = "integer";
-  } else {
-    ns = as.integer(neighbourhood_size);
-    if (is.null(ns)) {
-      warning("'neighbourhood_size' is NULL ... setting to 4L");
-      ns = 4L;
-    } else if (ns <= 1L) {
-      warning("'neighbourhood_size' is <= 2L ... setting to 4L");
-      ns = 4L;
-    }
-
-    # derive from neighbourhood_size
-    psus$nn_size = ns;
-    psu_seq = seq_along(psus)[order(psus$nn_size)];
-    min_size = psus$nn_size[psu_seq[1L]];
-
-    for (i in psu_seq[2L:nrow(psus)]) {
-      size = psus$nn_size[i];
-      nn_sizes[i] = as.integer(round(ns * size / min_size));
-    }
+  if (!("nn_size" %in% names(psus))) {
+    return(.calculate_nearest_neighbours(psus, neighbourhood_size));
   }
 
+  .assert_numeric(psus$nn_size, "'nn_size'");
+  if (!all(2L <= psus$nn_size)) # using all to catch NAs and NaNs
+    stop("'nn_size' must be an integer > 1L");
+  storage.mode(psus$nn_size) = "integer";
+
   psus
+}
+
+#' Prepare psus tracts
+#'
+#' @description
+#' Prepare a PSU object from a tract object, by getting the sizes of the PSUs from the tract data.
+#'
+#' @param psus An ordered vector of PSUs, ranging from the largest to the smallest PSU.
+#'
+#' @inheritParams prepare_tracts
+#'
+#' @inherit prepare_psus return
+#'
+#' @examples
+#' prepped_psus = prepare_psus_from_tract(psus, tracts, neighbourhood_size = 4L);
+#'
+#' @family prepare
+#' @export
+#'
+prepare_psus_from_tracts = function(psus, tracts, neighbourhood_size = 4L) {
+  if (!is.vector(psus)) stop("can only prepare 'psus' from a vector");
+  .assert_numeric_contains_no_na(psus, "'psus'");
+  storage.mode(psus) = "integer";
+  .assert_contains_item(tracts, "psu", "'tracts'");
+
+  # Count the number of tracts matching each PSU. Since PSUs are large->small, we need to reverse
+  # the order before the cumsum, and reverse it back after.
+  sizes = rev(cumsum(rev(vapply(psus, \(x) sum(tracts$psu == x), 0L))));
+  storage.mode(sizes) = "integer";
+
+  .calculate_nearest_neighbours(data.frame(psu  = psus, size = sizes), neighbourhood_size)
 }
 
 #' Prepare a category object
@@ -174,16 +248,14 @@ prepare_psus = function(psus, neighbourhood_size = 4L) {
 #' @description
 #' Prepare a category object, which can be either a data frame or a list.
 #'
-#' @details
-#' If the items (or columns) are unnamed, the order of the items (or columns) are assumed to be
-#' according to the order given by the parameter list.
-#' If a matrix is supplied, the order is also assumed to be in the parameter list order.
-#'
 #' @param categories A data frame, list, or a matrix containing the categories:
 #' \describe{
 #'   \item{category}{the category identifier (integer).}
 #'   \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
 #' }
+#' If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+#' according to the order given by the parameter list.
+#' If a matrix is supplied, the order is also assumed to be in the parameter list order.
 #'
 #' @returns A data frame
 #' \describe{
@@ -191,7 +263,7 @@ prepare_psus = function(psus, neighbourhood_size = 4L) {
 #'   \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
 #' }
 #'
-#' @example
+#' @examples
 #' prepped_cats = prepare_categories(category_psu_map);
 #'
 #' @family prepare
@@ -212,27 +284,26 @@ prepare_categories = function(categories) {
 #' @description
 #' Prepare a category object, which can be either a list or a data frame.
 #'
-#' @details
-#' An unnamed list will assume the same order as given by the parameter list.
-#' A data frame, unnamed or not, will assume the same order as given by the parameter list,
-#' discarding any non-floaty columns.
-#'
-#' @param tracts A list, or a data frame containing the tracts:
-#' \describe{
+#' @param tracts Any of the following:
+#' - A named list with items: \describe{
 #'   \item{tract}{the tract identifier (integer).}
 #'   \item{psu}{the PSU identifier of the smallest PSU containing the tract (integer).}
 #'   \item{auxiliaries}{the auxiliary information of the tracts (float matrix).}
 #' }
+#' - An unnamed list with items following the item order of the named list.
+#' - A data frame with items following the item order of the named list. Any columns after the first
+#' two will assumed to be auxiliaries, however discarded if they are non-floaty.
+#' - A matrix with two columns containing the `tract`s and the `psu`s, in that order.
 #'
-#' @returns A list
+#' @returns A list:
 #' \describe{
 #'   \item{tract}{the category identifier (integer).}
 #'   \item{psu}{the PSU identifier of the smallest PSU containing the tract (integer).}
 #'   \item{auxiliaries}{the auxiliary information of the tracts (float matrix).}
 #' }
 #'
-#' @example
-#' prepped_cats = prepare_tracts(tracts);
+#' @examples
+#' prepped_tracts = prepare_tracts(tracts);
 #'
 #' @family prepare
 #' @export
@@ -241,7 +312,34 @@ prepare_tracts = function(tracts) {
   lns = c("tract", "psu");
   lns_optional = c("auxiliaries")
 
-  if (is.list(tracts)) {
+  if (is.data.frame(tracts)) {
+    if (length(tracts) == 2L) {
+      # If data frame have few cols, we know the layout
+      tracts = list(
+        tract = tracts[[1]],
+        psu = tracts[[2]]
+      );
+    } else {
+      # If data frame have many cols, we need to identify floats
+      aux_bool = rep(FALSE, ncol(tracts));
+      for (col in 3L:ncol(tracts)) { # ncol guaranteed > 2L b/c check in beginning of fun
+        if (storage.mode(tracts[[col]]) == "double") {
+          aux_bool[col] = TRUE;
+        } else if (storage.mode(tracts[[col]]) == "integer") {
+          storage.mode(tracts[[col]]) = "double";
+          aux_bool[col] = TRUE;
+        } else {
+          warning("auxiliaries on column ", col, " discarded as non-floaty");
+        }
+      }
+
+      tracts = list(
+        tract = tracts[[1]],
+        psu = tracts[[2]],
+        auxiliaries = as.matrix(tracts[, aux_bool])
+      );
+    }
+  } else if (is.list(tracts)) {
     # If list is unnamed, take optional if possible
     if (is.null(names(tracts))) {
       if (length(tracts) == 2L) {
@@ -253,25 +351,13 @@ prepare_tracts = function(tracts) {
       # If list is named, assert that mandatory items exist
       for (item in lns) .assert_contains_item(tracts, item, "'tracts'");
     }
-  } else if (is.data.frame(tracts)) {
-    if (length(tracts) == 2L) {
-      # If data frame have few cols, we know the layout
-      tracts = list(
-        tract = tracts[, 1],
-        psu = tracts[, 2]
-      );
-    } else {
-      # If data frame have many cols, we need to identify floats
-      aux_bool = rep(FALSE, ncol(tracts));
-      for (col in 3L:ncol(tracts)) { # ncol guaranteed > 2L b/c check in beginning of fun
-        if (storage.mode(tracts[, col]) == "double") aux_bool[col] = TRUE;
-      }
-      tracts = list(
-        tract = tracts[, 1],
-        psu = tracts[, 2],
-        auxiliaries = as.matrix(tracts[, aux_bool])
-      );
-    }
+  } else if (is.matrix(tracts) && ncol(tracts) == 2L) {
+    tracts = list(
+      tract = tracts[, 1, drop = TRUE],
+      psu = tracts[, 2, drop = TRUE]
+    );
+  } else {
+    stop("'tracts' cannot be converted to a list");
   }
 
   # Do mandatory checks
@@ -284,7 +370,9 @@ prepare_tracts = function(tracts) {
 
   if ("auxiliaries" %in% names(tracts)) {
     .assert_double_contains_no_na(tracts$auxiliaries, "'auxiliaries'");
-    .assert_len(tracts$auxiliaries, len, "'psu'");
+    if (len != nrow(tracts$auxiliaries)) {
+      stop("'auxiliaries' have incorrect length (should be ", len, ")");
+    }
   }
 
   tracts
@@ -295,11 +383,6 @@ prepare_tracts = function(tracts) {
 #' @description
 #' Prepare a tract data object (or plot data), which can be either a list or a data frame.
 #'
-#' @details
-#' If the items (or columns) are unnamed, the order of the items (or columns) are assumed to be
-#' according to the order given by the parameter list.
-#' If a matrix is supplied, the order is also assumed to be in the parameter list order.
-#'
 #' @param data A list, or a data frame containing the survey data:
 #' \describe{
 #'   \item{tract}{the tract identifier (integer).}
@@ -307,6 +390,8 @@ prepare_tracts = function(tracts) {
 #'   \item{dw}{the design weight of the data (float).}
 #'   \item{value}{the recorded value (float).}
 #' }
+#' If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+#' according to the order given by the parameter list.
 #'
 #' @returns A data frame
 #' \describe{
@@ -316,7 +401,7 @@ prepare_tracts = function(tracts) {
 #'   \item{value}{the recorded value (float).}
 #' }
 #'
-#' @example
+#' @examples
 #' prepped_data = prepare_data(plots);
 #'
 #' @family prepare
@@ -345,7 +430,7 @@ prepare_data = function(data) {
 #'
 #' @returns The value
 #'
-#' @example
+#' @examples
 #' prepped_area = prepare_area(2.0);
 #'
 #' @family prepare

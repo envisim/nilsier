@@ -12,15 +12,16 @@
 
 //! Savvy-R-wrappers for [`nilsier`]
 
+#![expect(clippy::wildcard_imports, reason = "need everything")]
+
+mod sexp;
+
 use std::num::{
     NonZeroU32,
     NonZeroUsize,
 };
 
-use envisim_utils::matrix::{
-    Dimensions,
-    MatrixBase,
-};
+use envisim_utils::matrix::Dimensions;
 use envisim_utils::sampling_options::SpreadingOptions;
 use envisim_utils::utils::{
     PointSet,
@@ -39,73 +40,74 @@ use nilsier::{
     Nils,
 };
 use num_traits::ToPrimitive;
+use rustc_hash::FxHashMap;
 use savvy::{
-    IntegerSexp,
     ListSexp,
     OwnedIntegerSexp,
     OwnedListSexp,
     OwnedRealSexp,
     OwnedStringSexp,
-    RealSexp,
     Sexp,
     savvy,
     savvy_err,
 };
 
-/// Wrapper for matrix data
-#[must_use]
-struct RMatrixData(RealSexp);
-
-impl SliceView for RMatrixData {
-    type Elem = f64;
-    #[inline]
-    fn data(&self) -> &[Self::Elem] { self.0.as_slice() }
-}
+use crate::sexp::*;
 
 /// Struct mapping matrix with ids
 #[must_use]
 struct SpreadingData {
+    /// internal ids sexp
+    ids_vec: IntegerSexpFatPtr,
     /// internal ids
-    ids: IntegerSexp,
+    ids: FxHashMap<i32, usize>,
     /// data in matrix form
-    data: MatrixBase<RMatrixData>,
+    data: RMatrix,
 }
-
 impl SpreadingData {
     /// Constructs new
     #[inline]
-    fn new(list: TractList) -> savvy::Result<Option<Self>> {
-        let Some(aux_data) = list.auxiliaries else {
-            return Ok(None);
-        };
-        let data = MatrixBase::new(RMatrixData(aux_data), list.tracts.len())
-            .ok_or_else(|| savvy_err!("cannot convert auxiliaries to Matrix"))?;
-
-        Ok(Some(Self {
-            ids: list.tracts,
-            data,
-        }))
+    fn new(list: TractList) -> Option<Self> {
+        list.auxiliaries.map(|data| {
+            let ids: FxHashMap<i32, usize> = list
+                .tracts
+                .iter()
+                .enumerate()
+                .map(|(i, id)| (*id, i))
+                .collect();
+            Self {
+                ids,
+                ids_vec: list.tracts,
+                data,
+            }
+        })
     }
-    /// Returns a slice of the ids
+    /// Returns an iterator over the ids
     #[inline]
-    fn id_slice(&self) -> &[i32] { self.ids.as_slice() }
+    fn id_iter(&self) -> impl ExactSizeIterator<Item = i32> + DoubleEndedIterator + use<'_> {
+        self.ids_vec.iter().copied()
+    }
+    /// Returns true if `id` exists in the collection
+    #[inline]
+    fn contains(&self, id: i32) -> bool { self.ids.contains_key(&id) }
     /// Returns the position of a specific `id`
     #[inline]
-    fn position(&self, id: i32) -> Option<usize> { self.ids().position(|v| v == id) }
+    fn position(&self, id: i32) -> Option<usize> { self.ids.get(&id).copied() }
 }
+
 impl PointSet for SpreadingData {
     type Value = f64;
     type Id = i32;
     #[inline]
-    fn len(&self) -> NonZeroUsize { self.data.len() }
+    fn len(&self) -> NonZeroUsize { self.data.nrow() }
     #[inline]
     fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + DoubleEndedIterator {
-        self.ids.iter().copied()
+        self.id_iter()
     }
     #[inline]
     fn dimensions(&self) -> NonZeroUsize { self.data.ncol() }
     #[inline]
-    fn contains(&self, id: Self::Id) -> bool { self.id_slice().contains(&id) }
+    fn contains(&self, id: Self::Id) -> bool { self.contains(id) }
     #[inline]
     fn get_coord(&self, id: Self::Id, dim: usize) -> Option<Self::Value> {
         self.position(id).map(|row| self.data[(row, dim)])
@@ -123,22 +125,22 @@ impl PointSet for SpreadingData {
 #[must_use]
 struct PsuList {
     /// psu ids
-    psus: IntegerSexp,
+    psus: IntegerSexpFatPtr,
     /// sizes
-    sizes: IntegerSexp,
+    sizes: IntegerSexpFatPtr,
     /// supplied nearest neighbour sizes
-    nn_sizes: Option<IntegerSexp>,
+    nn_sizes: Option<IntegerSexpFatPtr>,
 }
 impl PsuList {
     /// Extract from `list`
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
-        let ids: IntegerSexp = list
+        let ids: IntegerSexpFatPtr = list
             .get("psu")
             .ok_or(savvy_err!("cannot find list item 'psus'"))?
             .try_into()?;
 
-        let sizes: IntegerSexp = list
+        let sizes: IntegerSexpFatPtr = list
             .get("size")
             .ok_or(savvy_err!("cannot find list item 'sizes'"))?
             .try_into()?;
@@ -149,7 +151,7 @@ impl PsuList {
 
         let nn_sizes = match list.get("nn_size") {
             Some(nn) => {
-                let nn: IntegerSexp = nn.try_into()?;
+                let nn: IntegerSexpFatPtr = nn.try_into()?;
                 if ids.len() != nn.len() {
                     return Err(savvy_err!("'psus' and 'nn_sizes' must match in length"));
                 }
@@ -166,7 +168,12 @@ impl PsuList {
     }
     /// Construct new `Nils`
     #[inline]
-    fn as_nils(&self, cap: usize) -> savvy::Result<Nils<i32, i32, i32>> {
+    fn as_nils(
+        &self,
+        cap: usize,
+        frame_area: Area,
+        tract_area: Area,
+    ) -> savvy::Result<Nils<i32, i32, i32>> {
         let headers: Vec<PsuHeader<i32>> = self
             .psus
             .iter()
@@ -189,7 +196,7 @@ impl PsuList {
             None => None,
         };
 
-        let nils = Nils::new(headers.into_iter(), nn_sizes, cap)?;
+        let nils = Nils::new(headers.into_iter(), nn_sizes, frame_area, tract_area, cap)?;
         Ok(nils)
     }
 }
@@ -198,19 +205,19 @@ impl PsuList {
 #[must_use]
 struct CategoryList {
     /// category ids
-    categories: IntegerSexp,
+    categories: IntegerSexpFatPtr,
     /// psu ids
-    psus: IntegerSexp,
+    psus: IntegerSexpFatPtr,
 }
 impl CategoryList {
     /// Extract from `list`
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
-        let categories: IntegerSexp = list
+        let categories: IntegerSexpFatPtr = list
             .get("category")
             .ok_or(savvy_err!("cannot find list item 'categories'"))?
             .try_into()?;
-        let psus: IntegerSexp = list
+        let psus: IntegerSexpFatPtr = list
             .get("psu")
             .ok_or(savvy_err!("cannot find list item 'psus'"))?
             .try_into()?;
@@ -235,21 +242,21 @@ impl CategoryList {
 #[must_use]
 struct TractList {
     /// tract ids
-    tracts: IntegerSexp,
+    tracts: IntegerSexpFatPtr,
     /// psu ids
-    psus: IntegerSexp,
+    psus: IntegerSexpFatPtr,
     /// auxiliary information
-    auxiliaries: Option<RealSexp>,
+    auxiliaries: Option<RMatrix>,
 }
 impl TractList {
     /// Extract from `list`
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
-        let tracts: IntegerSexp = list
+        let tracts: IntegerSexpFatPtr = list
             .get("tract")
             .ok_or(savvy_err!("cannot find list item 'tract'"))?
             .try_into()?;
-        let psus: IntegerSexp = list
+        let psus: IntegerSexpFatPtr = list
             .get("psu")
             .ok_or(savvy_err!("cannot find list item 'psu'"))?
             .try_into()?;
@@ -260,20 +267,13 @@ impl TractList {
 
         let auxiliaries = match list.get("auxiliaries") {
             Some(aux) => {
-                let aux: RealSexp = aux.try_into()?;
-                let rows = aux
-                    .get_dim()
-                    .and_then(|dim| dim.first())
-                    .copied()
-                    .ok_or_else(|| savvy_err!("cannot get rows from auxiliaries"))?
-                    .to_usize()
-                    .ok_or_else(|| savvy_err!("cannot convert rows to usize"))?;
+                let data = realsexp_to_matrix(aux.try_into()?)?;
 
-                if tracts.len() != rows {
+                if tracts.len() != data.nrow().get() {
                     return Err(savvy_err!("tract/auxiliaries has inconsistent length"));
                 }
 
-                Some(aux)
+                Some(data)
             }
             None => None,
         };
@@ -286,13 +286,12 @@ impl TractList {
     }
     /// Add tracts to `Nils`
     #[inline]
-    fn nils<CID>(&self, nils: &mut Nils<i32, CID, i32>, tract_area: Area) -> savvy::Result<()> {
+    fn nils<CID>(&self, nils: &mut Nils<i32, CID, i32>) -> savvy::Result<()> {
         nils.add_tracts(
             self.tracts
                 .iter()
                 .zip(self.psus.iter())
                 .map(|(tract, psu)| TractHeaderEntry::new(*tract, *psu)),
-            tract_area,
         )?;
         Ok(())
     }
@@ -301,31 +300,31 @@ impl TractList {
 /// `ListSexp` representation of tract entries
 struct TractEntryList {
     /// tract ids
-    tracts: IntegerSexp,
+    tracts: IntegerSexpFatPtr,
     /// category ids
-    categories: IntegerSexp,
+    categories: IntegerSexpFatPtr,
     /// design weights
-    dws: RealSexp,
+    dws: RealSexpFatPtr,
     /// values
-    values: RealSexp,
+    values: RealSexpFatPtr,
 }
 impl TractEntryList {
     /// Extract from `list`
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
-        let tract_ids: IntegerSexp = list
+        let tract_ids: IntegerSexpFatPtr = list
             .get("tract")
             .ok_or(savvy_err!("cannot find list item 'tract'"))?
             .try_into()?;
-        let cat_ids: IntegerSexp = list
+        let cat_ids: IntegerSexpFatPtr = list
             .get("category")
             .ok_or(savvy_err!("cannot find list item 'category'"))?
             .try_into()?;
-        let dw_vec: RealSexp = list
+        let dw_vec: RealSexpFatPtr = list
             .get("dw")
             .ok_or(savvy_err!("cannot find list item 'dw'"))?
             .try_into()?;
-        let value_vec: RealSexp = list
+        let value_vec: RealSexpFatPtr = list
             .get("value")
             .ok_or(savvy_err!("cannot find list item 'value'"))?
             .try_into()?;
@@ -348,9 +347,9 @@ impl TractEntryList {
     /// Add tract entries to `Nils`
     #[inline]
     fn nils<PID>(&self, nils: &mut Nils<PID, i32, i32>) -> savvy::Result<()> {
-        let cats = self.categories.as_slice();
-        let dws = self.dws.as_slice();
-        let values = self.values.as_slice();
+        let cats = self.categories.data();
+        let dws = self.dws.data();
+        let values = self.values.data();
 
         for (i, tract) in self.tracts.iter().enumerate() {
             nils.add_value_entry(TractValueEntry::new(*tract, cats[i], dws[i], values[i])?)?;
@@ -425,7 +424,7 @@ fn as_result_list(
     // Set covariance estimation strategy
     let sexp_covariance_estimation_strategy =
         OwnedStringSexp::try_from_scalar(match covariances.estimation_strategy() {
-            CovarianceStrategy::NearestNeighbour => "nearest_neighbour",
+            CovarianceStrategy::NearestNeighbours => "nearest_neighbours",
             CovarianceStrategy::SimpleRandomSample => "srs",
             _ => "unknown",
         })?;
@@ -438,7 +437,10 @@ fn as_result_list(
     Ok(list)
 }
 
-/// Estimates according to Nils design
+/// Estimates according to NILS design
+///
+/// @keywords internal
+/// @noRd
 #[savvy]
 fn rust_nils_estimate(
     psus: ListSexp,
@@ -450,38 +452,31 @@ fn rust_nils_estimate(
     variance_strategy: &str,
 ) -> savvy::Result<Sexp> {
     // Prep data
-    let tract_area = Area::new(tract_area)?;
     let frame_area = Area::new(frame_area)?;
+    let tract_area = Area::new(tract_area)?;
     let psus = PsuList::from_list(&psus)?;
     let categories = CategoryList::from_list(&categories)?;
     let tracts = TractList::from_list(&tracts)?;
     let values = TractEntryList::from_list(&values)?;
 
     // Construct Nils
-    let mut nils = psus.as_nils(tracts.tracts.len())?;
+    let mut nils = psus.as_nils(tracts.tracts.len(), frame_area, tract_area)?;
     categories.nils(&mut nils)?;
-    tracts.nils(&mut nils, tract_area)?;
+    tracts.nils(&mut nils)?;
     values.nils(&mut nils)?;
 
     // Estimate per category
-    let estimates = nils.estimate_per_category(frame_area);
+    let estimates = nils.estimate_per_category();
 
     // Covariance matrix
 
-    let covariances = match (variance_strategy, SpreadingData::new(tracts)?) {
-        ("nearest_neighbour", Some(sd)) => {
-            let so = SpreadingOptions::new(sd);
-            nils.covariance_estimate_nn(frame_area, &so)?
+    let covariances = match (variance_strategy, SpreadingData::new(tracts)) {
+        ("nearest_neighbours", Some(sd)) => {
+            let so = SpreadingOptions::new(sd).set_bucket_size(30)?;
+            nils.covariance_estimate_nn(&estimates, &so)?
         }
-        _ => nils.covariance_estimate(frame_area)?,
+        _ => nils.covariance_estimate(&estimates)?,
     };
-    // let covariances = match SpreadingData::new(tracts)? {
-    //     Some(sd) => {
-    //         let so = SpreadingOptions::new(sd);
-    //         nils.covariance_estimate_nn(frame_area, &so)?
-    //     }
-    //     None => nils.covariance_estimate(frame_area)?,
-    // };
 
     let list = as_result_list(&estimates, &covariances)?;
     list.into()

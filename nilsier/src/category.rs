@@ -53,6 +53,17 @@ impl<CID> CatIdPair<CID> {
     /// Returns the second member of the pair
     #[inline]
     pub fn get_b(&self) -> &CID { &self.1 }
+    /// Returns true if the members are equal
+    #[inline]
+    pub fn is_same(&self) -> bool
+    where
+        CID: Eq,
+    {
+        self.0 == self.1
+    }
+    /// Deconstructs the pair and returns the inner categories
+    #[inline]
+    pub fn into_inner(self) -> (CID, CID) { (self.0, self.1) }
 }
 impl<CID> From<(CID, CID)> for CatIdPair<CID>
 where

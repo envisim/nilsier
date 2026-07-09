@@ -5,7 +5,7 @@
 #   first, which allows users to override the functions defined here (e.g., a
 #   print() method for an enum).
 
-#' @useDynLib nilsier, .registration = TRUE
+#' @useDynLib nilsier2, .registration = TRUE
 #' @keywords internal
 NULL
 
@@ -26,18 +26,21 @@ NULL
 # Prohibit modifying environments
 
 #' @export
-`$<-.savvy_nilsier__sealed` <- function(x, name, value) {
+`$<-.savvy_nilsier2__sealed` <- function(x, name, value) {
   class <- gsub("__bundle$", "", class(x)[1])
   stop(class, " cannot be modified", call. = FALSE)
 }
 
 #' @export
-`[[<-.savvy_nilsier__sealed` <- function(x, i, value) {
+`[[<-.savvy_nilsier2__sealed` <- function(x, i, value) {
   class <- gsub("__bundle$", "", class(x)[1])
   stop(class, " cannot be modified", call. = FALSE)
 }
 
-#' Estimates according to Nils design
+#' Estimates according to NILS design
+#'
+#' @keywords internal
+#' @noRd
 `rust_nils_estimate` <- function(`psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`) {
   .Call(savvy_rust_nils_estimate__impl, `psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`)
 }

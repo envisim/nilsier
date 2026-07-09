@@ -287,6 +287,10 @@ impl<PID, CID> PsuStore<PID, CID> {
     #[must_use]
     #[inline]
     pub fn get_max_psu(&self) -> Option<&PsuData<PID, CID>> { self.psus.last() }
+    /// Returns the n:th PSU.
+    #[must_use]
+    #[inline]
+    pub fn get_nth_psu(&self, n: usize) -> Option<&PsuData<PID, CID>> { self.psus.get(n) }
     /// Returns the index of a PSU.
     /// # Errors
     /// Returns an error if the `psu_id` is not found
