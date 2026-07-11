@@ -3,7 +3,7 @@
 #' @description
 #' Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
 #'
-#' @inheritParams prepare_psus
+#' @inheritParams prepare_psus psus
 #' @inheritParams prepare_categories
 #' @inheritParams prepare_tracts
 #' @inheritParams prepare_data
@@ -29,7 +29,7 @@
 #' [prepare_psus()]). When calculated from the sizes, the PSUs scales linearly with the nearest
 #' neighbourhood size of the smallest PSU, given by `neighbourhood_size`.
 #'
-#' @returns A `NilsEstimate` object, essentially a data frame with one row per category and the
+#' @returns A `nilsier` object, essentially a data frame with one row per category and the
 #' following columns:
 #' \describe{
 #'   \item{Cat. ID}{The category ID number.}
@@ -40,10 +40,10 @@
 #' }
 #'
 #' @examples
-#' obj = nils(psus, category_psu_map, tracts, plots);
+#' obj = nilsier(psus, category_psu_map, tracts, plots);
 #'
 #' @export
-nils = function(
+nilsier = function(
   psus,
   categories,
   tracts,
@@ -53,9 +53,9 @@ nils = function(
   neighbourhood_size = 4L,
   variance_strategy = "srs"
 ) {
-  psus       = prepare_psus(psus, neighbourhood_size);
   categories = prepare_categories(categories);
   tracts     = prepare_tracts(tracts);
+  psus       = prepare_psus(psus, tracts, neighbourhood_size);
   data       = prepare_data(data);
 
   frame_area = prepare_area(frame_area);
@@ -96,7 +96,7 @@ nils = function(
 
   colnames(ne) = c("Cat. ID", "Est. total", "Est. variance", "Positive tracts");
 
-  class(ne) = c("NilsEstimate2", class(ne));
+  class(ne) = c("nilsier", class(ne));
 
   attr(ne, "psus")              = psus;
   attr(ne, "categories")        = categories;
@@ -117,7 +117,23 @@ nils = function(
   ne
 }
 
-#' @rdname nils
+#' Estimate totals using the NILS hierarchical design (DEPRECATED)
+#'
+#' @description
+#' Deprecated in 0.2.0. Use [nilsier()] instead.
+#'
+#' @param plot_data See [nilsier()] `data`.
+#' @param tract_data See [nilsier()] `tracts`.
+#' @param auxiliaries See [nilsier()] `tracts`
+#' @param psus See [nilsier()] `psus`.
+#' @param category_psu_map See [nilsier()] `categories`.
+#' @param area See [nilsier()] `frame_area`.
+#' @param tract_area See [nilsier()] `tract_area`.
+#' @param size_of_neighbourhood See [nilsier()] `neighbourhood_size`.
+#'
+#' @returns See return value of [nilsier()].
+#'
+#' @keywords deprecated
 #' @export
 NilsEstimate = function(
   plot_data,
@@ -127,11 +143,12 @@ NilsEstimate = function(
   area = 46519242.1175867,
   tract_area = 196 * 100 * pi
 ) {
-  warning("NilsEstimate() was deprecated in 0.2.0, in favor of nils()");
-  nils(psus, category_psu_map, tract_data, plot_data, area, tract_area, "srs")
+  warning("NilsEstimate() was deprecated in 0.2.0. Use nils() instead.");
+  nilsier(psus, category_psu_map, tract_data, plot_data, area, tract_area, "srs")
 }
 
-#' @rdname nils
+#' @rdname NilsEstimate
+#' @keywords deprecated
 #' @export
 NilsEstimateBalanced = \(
   plot_data,
@@ -143,12 +160,12 @@ NilsEstimateBalanced = \(
   tract_area = 196 * 100 * pi,
   size_of_neighbourhood = 4L
 ) {
-  warning("NilsEstimateBalanced() was deprecated in 0.2.0, in favor of nils()");
+  warning("NilsEstimateBalanced() was deprecated in 0.2.0. Use nils() instead.");
   tracts = as.matrix(tract_data);
   tracts = list(
     tract       = tracts[, 1],
     psu         = tracts[, 2],
     auxiliaries = auxiliaries
   );
-  nils(psus, category_psu_map, tracts, plot_data, area, tract_area, "nearest_neighbour");
+  nils(psus, category_psu_map, tracts, plot_data, area, tract_area, "nearest_neighbour")
 }

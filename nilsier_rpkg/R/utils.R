@@ -118,64 +118,32 @@
   .assert_contains_no_na(vec, name);
 }
 
-#' Calculates the nearest neighbour sizes (nn_sizes)
-#'
-#' @param psus A data frame
-#' \describe{
-#'   \item{psu}{the PSU identifier (integer).}
-#'   \item{size}{the number of tracts in the PSU (integer).}
-#' }
-#'
-#' @param neighbourhood_size The default neighbourhood size to use for the smallest PSU
-#' (integer > `1L`). The neighbourhood size for larger PSUs scales linearly.
-#'
-#' @returns A data frame
-#' \describe{
-#'   \item{psu}{the PSU identifier (integer).}
-#'   \item{size}{the number of tracts in the PSU (integer).}
-#'   \item{nn_size}{the neighbourhood size to use (integer).}
-#' }
-#'
-#' @keywords internal
-#' @noRd
-.calculate_nearest_neighbours = function(psus, neighbourhood_size = 4L) {
-  ns = as.integer(neighbourhood_size);
-  if (is.null(ns)) {
-    warning("'neighbourhood_size' is NULL ... setting to 4L");
-    ns = 4L;
-  } else if (ns <= 1L) {
-    warning("'neighbourhood_size' is <= 2L ... setting to 4L");
-    ns = 4L;
-  }
-
-  # derive from neighbourhood_size
-  psus$nn_size = ns;
-  psu_seq = seq_along(psus$psu)[order(psus$size)];
-  min_size = psus$size[psu_seq[1L]];
-
-  for (i in psu_seq[2L:nrow(psus)]) {
-    size = psus$size[i];
-    psus$nn_size[i] = as.integer(round(ns * size / min_size));
-  }
-
-  psus
-}
-
 #' Prepare a PSU object
 #'
 #' @description
 #' Prepare a PSU object, which can be either a data frame or a list.
 #'
-#' @param psus A data frame, list, or a matrix containing the PSUs:
+#' @details
+#' If `nn_size` is provided through `psus`, `tracts` and `neighbourhood_size` can be ignored.
+#' Otherwise, the neighbourhood size is calculated from the PSU sizes.
+#' The PSU size is derived from the number of `tracts` with a PSU id, and neighbourhood sizes scales
+#' linearly with these sizes, starting from `neighbourhood_size`.
+#'
+#' @param psus A vector of PSU identifiers (integer) in order from the largest to the smallest, or;
+#' a data frame, list, matrix, or vector containing the PSUs:
 #' \describe{
-#'   \item{psu}{the PSU identifier (integer).}
-#'   \item{size}{the number of tracts in the PSU (integer).}
-#'   \item{nn_size}{(optional) the neighbourhood size to use (integer > `1L`). If not given, it can
-#'                  be derived from `neighbourhood_size`.}
+#'   \item{psu}{the PSU identifiers (integer) in order from the largest to the smallest.}
+#'   \item{nn_size}{(optional) the neighbourhood size to use (integer > `1L`). Will be derived from
+#'                  `neighbourhood_size` if not given.}
 #' }
 #' If the columns (or items) are unnamed, or if a matrix is supplied, the order of the columns
 #' (or items) are assumed to follow the order given by the list above.
 #' If a matrix is supplied, the order is also assumed to be in the parameter list order.
+#'
+#' @param tracts A list or data.frame of tracts with the following items (columns):
+#' \describe{
+#'   \item{psu}{the PSU ID of the tract.}
+#' }
 #'
 #' @param neighbourhood_size The default neighbourhood size to use for the smallest PSU
 #' (integer > `1L`). The neighbourhood size for larger PSUs scales linearly.
@@ -188,20 +156,41 @@
 #' }
 #'
 #' @examples
-#' prepped_psus = prepare_psus(psus, neighbourhood_size = 4L);
+#' prepped_psus = prepare_psus(psus, tracts, 4L);
 #'
 #' @family prepare
 #' @export
-prepare_psus = function(psus, neighbourhood_size = 4L) {
-  psus = .to_named_df(psus, c("psu", "size"), c("nn_size"));
+prepare_psus = function(psus, tracts = NULL, neighbourhood_size = 4L) {
+  if (is.vector(psus)) {
+    psus = list(psu = psus);
+  } else {
+    psus = .to_named_df(psus, c("psu"), c("nn_size"));
+  }
 
   .assert_numeric_contains_no_na(psus$psu, "'psu'");
-  .assert_numeric_contains_no_na(psus$size, "'size'");
   storage.mode(psus$psu) = "integer";
-  storage.mode(psus$size) = "integer";
+
+  .assert_contains_item(tracts, "psu", "'tracts'");
+
+  # Count the number of tracts matching each PSU. Since PSUs are large->small, we need to reverse
+  # the order before the cumsum, and reverse it back after.
+  psus$sizes = rev(cumsum(rev(vapply(psus, \(x) sum(tracts$psu == x), 0L))));
+  storage.mode(sizes) = "integer";
+
 
   if (!("nn_size" %in% names(psus))) {
-    return(.calculate_nearest_neighbours(psus, neighbourhood_size));
+
+    ns = as.integer(neighbourhood_size);
+    if (is.null(ns)) {
+      warning("'neighbourhood_size' is NULL ... setting to 4L");
+      ns = 4L;
+    } else if (ns <= 1L) {
+      warning("'neighbourhood_size' is <= 2L ... setting to 4L");
+      ns = 4L;
+    }
+
+    min_size = psus$sizes[length(psus$sizes)];
+    psus$nn_size = as.integer(round(ns * sizes / min_size));
   }
 
   .assert_numeric(psus$nn_size, "'nn_size'");
@@ -210,37 +199,6 @@ prepare_psus = function(psus, neighbourhood_size = 4L) {
   storage.mode(psus$nn_size) = "integer";
 
   psus
-}
-
-#' Prepare psus tracts
-#'
-#' @description
-#' Prepare a PSU object from a tract object, by getting the sizes of the PSUs from the tract data.
-#'
-#' @param psus An ordered vector of PSUs, ranging from the largest to the smallest PSU.
-#'
-#' @inheritParams prepare_tracts
-#'
-#' @inherit prepare_psus return
-#'
-#' @examples
-#' prepped_psus = prepare_psus_from_tract(psus, tracts, neighbourhood_size = 4L);
-#'
-#' @family prepare
-#' @export
-#'
-prepare_psus_from_tracts = function(psus, tracts, neighbourhood_size = 4L) {
-  if (!is.vector(psus)) stop("can only prepare 'psus' from a vector");
-  .assert_numeric_contains_no_na(psus, "'psus'");
-  storage.mode(psus) = "integer";
-  .assert_contains_item(tracts, "psu", "'tracts'");
-
-  # Count the number of tracts matching each PSU. Since PSUs are large->small, we need to reverse
-  # the order before the cumsum, and reverse it back after.
-  sizes = rev(cumsum(rev(vapply(psus, \(x) sum(tracts$psu == x), 0L))));
-  storage.mode(sizes) = "integer";
-
-  .calculate_nearest_neighbours(data.frame(psu  = psus, size = sizes), neighbourhood_size)
 }
 
 #' Prepare a category object
@@ -253,14 +211,14 @@ prepare_psus_from_tracts = function(psus, tracts, neighbourhood_size = 4L) {
 #'   \item{category}{the category identifier (integer).}
 #'   \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
 #' }
-#' If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+#' If the columns (or items) are unnamed, the order of the columns (or items) is assumed to be
 #' according to the order given by the parameter list.
 #' If a matrix is supplied, the order is also assumed to be in the parameter list order.
 #'
 #' @returns A data frame
 #' \describe{
 #'   \item{category}{the category identifier (integer).}
-#'   \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
+#'   \item{psu}{the PSU identifier of the smallest PSU in which the category can appear (integer).}
 #' }
 #'
 #' @examples
@@ -383,15 +341,22 @@ prepare_tracts = function(tracts) {
 #' @description
 #' Prepare a tract data object (or plot data), which can be either a list or a data frame.
 #'
-#' @param data A list, or a data frame containing the survey data:
+#' @param data A data frame (or list) containing the survey data:
 #' \describe{
 #'   \item{tract}{the tract identifier (integer).}
 #'   \item{category}{the category identifier (integer).}
 #'   \item{dw}{the design weight of the data (float).}
 #'   \item{value}{the recorded value (float).}
 #' }
-#' If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+#' If the columns (or items) are named, the default names can be overidden by the corresponding
+#' argument.
+#' If the columns (or items) are unnamed, the order of the columns (or items) is assumed to be
 #' according to the order given by the parameter list.
+#'
+#' @param tract A formula specifying the column (or item) containing tract IDs.
+#' @param category A formula specifying the column (or item) containing category IDs.
+#' @param dw A formula specifying the column (or item) containing design weights.
+#' @param value A formula specifying the column (or item) containing the variable of interest.
 #'
 #' @returns A data frame
 #' \describe{
@@ -406,8 +371,13 @@ prepare_tracts = function(tracts) {
 #'
 #' @family prepare
 #' @export
-prepare_data = function(data) {
-  data = .to_named_df(data, c("tract", "category", "dw", "value"));
+prepare_data = function(data, tract = ~tract, category = ~category, dw = ~dw, value = ~value) {
+  tract = all.vars(tract)[1];
+  category = all.vars(category)[1];
+  dw = all.vars(dw)[1];
+  value = all.vars(value)[1];
+
+  data = .to_named_df(data, c(tract, category, dw, value));
 
   .assert_numeric_contains_no_na(data$tract, "'tract'");
   .assert_numeric_contains_no_na(data$category, "'category'");
@@ -419,6 +389,13 @@ prepare_data = function(data) {
   storage.mode(data$value) = "double";
 
   data
+}
+
+#' @rdname prepare_data
+#' @export
+PreparePlotData = function(data, tid, cat, dw, y) {
+  warning("PreparePlotData() was deprecated in 0.2.0. Use prepare_data instead.")
+  prepare_data(data, tid, cat, dw, y)
 }
 
 #' Prepare an area
