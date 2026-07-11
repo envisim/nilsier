@@ -65,6 +65,8 @@ use crate::tract::{
 pub enum NilsError {
     #[error("no categories have been added")]
     NoCategoriesAdded,
+    #[error("the supplied number of tracts does not match the prescribed number of tracts")]
+    IncorrectNumberOfTracts,
     #[error(transparent)]
     Psu(#[from] PsuError),
     #[error(transparent)]
@@ -328,10 +330,12 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     {
         for tract in tracts {
             let tract = tract.into();
+
             // Assert that the psu is valid
-            if self.psus.get_psu(tract.psu_id()).is_none() {
-                return Err(PsuError::PsuIdNotFound(tract.psu_id().to_string()).into());
-            }
+            self.psus
+                .get_psu_mut(tract.psu_id())
+                .ok_or(PsuError::PsuIdNotFound(tract.psu_id().to_string()))?
+                .added_tracts_increment();
 
             // Insert and replace
             self.tracts.insert(tract)?;
@@ -371,9 +375,12 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// 1. Totals per category.
     /// 2. Number of tracts with positive values per category.
     /// 3. Number of tracts with positive values in a category.
+    ///
+    /// # Errors
+    /// Returns an error if the number of supplied tracts does not match the PSU sizes.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn estimate_per_category(&self) -> EstimatePerCategory<CID>
+    pub fn estimate_per_category(&self) -> NilsResult<EstimatePerCategory<CID>>
     where
         CID: Copy + Ord,
     {
@@ -393,6 +400,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             positive_tracts: 0,
         };
 
+        // let mut tract_counts = Vec<(PID, u32)> = self.psus.iter().map(|pd| (*pd.psu_id(), 0)):
+
         for (_, tract) in self.tracts.iter() {
             let mut pos_tract = false;
             tract.totals().iter().for_each(|&ct| {
@@ -407,6 +416,11 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         }
 
         for psu in self.psus.iter() {
+            // Check for PSU size mismatch
+            if !psu.added_tracts_match() {
+                return Err(NilsError::IncorrectNumberOfTracts);
+            }
+
             let size = f64::from(psu.size().get());
             let area_frac = self.frame_area.get() / size;
 
@@ -417,7 +431,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             }
         }
 
-        epc
+        Ok(epc)
     }
     /// Sorts the `tract_ids` and constructs tract ranges over the psus
     #[must_use]
@@ -541,6 +555,11 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
             let area_frac = self.frame_area.get() / psu_size;
             let area_const = area_frac * (psu_size / (psu_size - 1.0));
+
+            // Check for PSU size mismatch
+            if !psu.added_tracts_match() {
+                return Err(NilsError::IncorrectNumberOfTracts);
+            }
 
             // Outer loop of cats from current psu
             for cat_ord in category_ranges[psu_ord].clone() {
@@ -694,6 +713,11 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
             let psu_nn = psu.nn_size().get().to_f64().expect("u32 -> f64");
             let area_frac = self.frame_area.get() / psu_size;
+
+            // Check for PSU size mismatch
+            if !psu.added_tracts_match() {
+                return Err(NilsError::IncorrectNumberOfTracts);
+            }
 
             // In normal variance est, we loop through psus->cats->tracts.
             // This we can do since fetching tracts is not too expensive, so looping

@@ -106,6 +106,8 @@ pub struct PsuData<PID, CID> {
     nn_size: NonZeroU32,
     /// Categories that appears in Psus of smaller sizes
     categories: Vec<CID>,
+    /// Number of added tracts
+    added_tracts: u32,
 }
 impl<PID, CID> PsuData<PID, CID>
 // where
@@ -150,6 +152,24 @@ impl<PID, CID> PsuData<PID, CID>
     #[must_use]
     #[inline]
     pub fn nn_size(&self) -> &NonZeroU32 { &self.nn_size }
+    /// Returns the number of added tracts
+    #[must_use]
+    #[inline]
+    pub fn added_tracts(&self) -> u32 { self.added_tracts }
+    /// Increments the number of added tracts
+    #[inline]
+    pub fn added_tracts_increment(&mut self) {
+        self.added_tracts = self.added_tracts.saturating_add(1)
+    }
+    /// Decrement the number of added tracts
+    #[inline]
+    pub fn added_tracts_decrement(&mut self) {
+        self.added_tracts = self.added_tracts.saturating_sub(1);
+    }
+    /// Returns `true` if the number of added tracts match the expected number of tracts
+    #[must_use]
+    #[inline]
+    pub fn added_tracts_match(&self) -> bool { self.added_tracts == self.size().get() }
     /// Returns an iterator over the categories of the PSU
     #[must_use]
     #[inline]
@@ -273,7 +293,7 @@ impl<PID, CID> PsuStore<PID, CID> {
     /// # Errors
     /// Returns an error if `psu_id` is not found.
     #[inline]
-    fn get_psu_mut(&mut self, psu_id: &PID) -> Option<&mut PsuData<PID, CID>>
+    pub fn get_psu_mut(&mut self, psu_id: &PID) -> Option<&mut PsuData<PID, CID>>
     where
         PID: Eq,
     {
