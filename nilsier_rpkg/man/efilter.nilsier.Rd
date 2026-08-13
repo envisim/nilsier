@@ -25,7 +25,7 @@ a filtered \link{nilsier} object.
 Filters a \link{nilsier} object by PSU level or category.
 }
 \examples{
-obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+obj = nilsier(psus, categories, tracts, plots);
 
 # Keep only category with ID 1
 efilter(obj, categories = 1)

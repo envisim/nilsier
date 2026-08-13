@@ -22,7 +22,7 @@ A named vector with the following elements:
 Accesses the estimate and variance estimate of a \link{nilsier} object.
 }
 \examples{
-obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+obj = nilsier(psus, categories, tracts, plots);
 coef(obj);
 
 }

@@ -22,24 +22,43 @@ pub use std::num::NonZeroU32;
 use num_traits::ToPrimitive;
 use thiserror::Error;
 
-use crate::category::CatError;
-
+/// PSU type errors
 #[non_exhaustive]
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum PsuError {
+    /// PSU size must be positive
     #[error("size must be positive")]
     InvalidSize,
+    /// PSU neighbourhood size must be positive
     #[error("neighbourhood size must be positive")]
     InvalidNeighbourhoodSize,
+    /// PSU ID not found
     #[error("PSU ID ({0}) not found")]
     PsuIdNotFound(String),
-    #[error("PSU ID ({0}) already exist")]
-    PsuIdCollision(String),
-    #[error(transparent)]
-    Category(#[from] CatError),
+    /// Category ID collision
+    #[error("CAT ID ({0}) collision")]
+    CatIdCollision(String),
 }
-/// Shorthand for `Result` with [`PsuError`] error type.
-type PsuResult<T> = Result<T, PsuError>;
+impl PsuError {
+    /// Returns `IdNotFound` error for TID
+    #[must_use]
+    #[inline]
+    fn pid_not_found<PID>(id: &PID) -> Self
+    where
+        PID: Display,
+    {
+        Self::PsuIdNotFound(id.to_string())
+    }
+    /// Returns `IdCollision` error for TID
+    #[must_use]
+    #[inline]
+    fn cid_collision<CID>(id: &CID) -> Self
+    where
+        CID: Display,
+    {
+        Self::CatIdCollision(id.to_string())
+    }
+}
 
 /// PSU information header
 #[must_use]
@@ -58,7 +77,7 @@ impl<PID> PsuHeader<PID> {
     /// # Errors
     /// If `size` or `nn_size` cannot be converted, i.e. are 0.
     #[inline]
-    pub fn try_new<SIZE, NN>(psu_id: PID, size: SIZE) -> PsuResult<Self>
+    pub fn try_new<SIZE, NN>(psu_id: PID, size: SIZE) -> Result<Self, PsuError>
     where
         SIZE: TryInto<NonZeroU32>,
     {
@@ -106,8 +125,6 @@ pub struct PsuData<PID, CID> {
     nn_size: NonZeroU32,
     /// Categories that appears in Psus of smaller sizes
     categories: Vec<CID>,
-    /// Number of added tracts
-    added_tracts: u32,
 }
 impl<PID, CID> PsuData<PID, CID>
 // where
@@ -128,7 +145,7 @@ impl<PID, CID> PsuData<PID, CID>
     /// # Errors
     /// If `nn_size` cannot be converted, i.e. are 0.
     #[inline]
-    pub fn try_new<NN>(header: PsuHeader<PID>, nn_size: NN) -> PsuResult<Self>
+    pub fn try_new<NN>(header: PsuHeader<PID>, nn_size: NN) -> Result<Self, PsuError>
     where
         NN: TryInto<NonZeroU32>,
     {
@@ -152,24 +169,6 @@ impl<PID, CID> PsuData<PID, CID>
     #[must_use]
     #[inline]
     pub fn nn_size(&self) -> &NonZeroU32 { &self.nn_size }
-    /// Returns the number of added tracts
-    #[must_use]
-    #[inline]
-    pub fn added_tracts(&self) -> u32 { self.added_tracts }
-    /// Increments the number of added tracts
-    #[inline]
-    pub fn added_tracts_increment(&mut self) {
-        self.added_tracts = self.added_tracts.saturating_add(1)
-    }
-    /// Decrement the number of added tracts
-    #[inline]
-    pub fn added_tracts_decrement(&mut self) {
-        self.added_tracts = self.added_tracts.saturating_sub(1);
-    }
-    /// Returns `true` if the number of added tracts match the expected number of tracts
-    #[must_use]
-    #[inline]
-    pub fn added_tracts_match(&self) -> bool { self.added_tracts == self.size().get() }
     /// Returns an iterator over the categories of the PSU
     #[must_use]
     #[inline]
@@ -245,8 +244,8 @@ where
 }
 
 /// `PsuStore` maps a primary sampling unit identifier to its sample size.
-/// The map is ordered by sample size, as the PSUs are assumed to be in descending order, i.e. each
-/// sample is a drawn from the sample before.
+/// The map is ordered by sample size, as the PSUs are assumed to be in ascending order, i.e. each
+/// sample is a drawn from the sample after.
 #[must_use]
 #[derive(Debug, Default, Clone)]
 pub struct PsuStore<PID, CID> {
@@ -312,8 +311,6 @@ impl<PID, CID> PsuStore<PID, CID> {
     #[inline]
     pub fn get_nth_psu(&self, n: usize) -> Option<&PsuData<PID, CID>> { self.psus.get(n) }
     /// Returns the index of a PSU.
-    /// # Errors
-    /// Returns an error if the `psu_id` is not found
     #[inline]
     pub fn order_of_psu(&self, psu_id: &PID) -> Option<usize>
     where
@@ -323,8 +320,6 @@ impl<PID, CID> PsuStore<PID, CID> {
     }
     /// Returns an iterator over all PSUs smaller than the given PSU, starting with the smallest and
     /// ending with the given PSU.
-    /// # Errors
-    /// Returns an error if `psu_id` does not exist.
     #[inline]
     pub fn subset_psu(
         &self,
@@ -337,8 +332,6 @@ impl<PID, CID> PsuStore<PID, CID> {
         Some(self.psus[..=idx].iter())
     }
     /// Returns an iterator over all PSUs larger than the given PSU, starting with the given PSU.
-    /// # Errors
-    /// Returns an error if `psu_id` does not exist.
     #[inline]
     pub fn superset_psu(
         &self,
@@ -354,22 +347,20 @@ impl<PID, CID> PsuStore<PID, CID> {
     /// # Errors
     /// Returns an error if `psu_id` does not exist, or if `cat_id` already exists.
     #[inline]
-    pub fn insert_category(&mut self, psu_id: &PID, cat_id: CID) -> PsuResult<bool>
+    pub fn insert_category(&mut self, psu_id: &PID, cat_id: CID) -> Result<bool, PsuError>
     where
         PID: Eq + Display,
         CID: Ord + Display,
     {
         if self.psus.iter().any(|pd| pd.contains_category(&cat_id)) {
-            return Err(CatError::CatIdCollision(cat_id.to_string()).into());
+            return Err(PsuError::cid_collision(&cat_id));
         }
 
         self.get_psu_mut(psu_id)
-            .ok_or(PsuError::PsuIdNotFound(psu_id.to_string()))
+            .ok_or(PsuError::pid_not_found(psu_id))
             .map(|pd| pd.insert_category(cat_id))
     }
     /// Removes a category from a PSU
-    /// # Errors
-    /// Returns an error if `psu_id` does not exist.
     #[inline]
     pub fn remove_category(&mut self, psu_id: &PID, cat_id: &CID) -> Option<bool>
     where
@@ -380,8 +371,6 @@ impl<PID, CID> PsuStore<PID, CID> {
             .map(|pd| pd.remove_category(cat_id))
     }
     /// Returns the PSU of a `cat_id`.
-    /// # Errors
-    /// Returns an error if `cat_id` is not found in any PSU.
     #[inline]
     pub fn get_psu_from_category(&self, cat_id: &CID) -> Option<&PsuData<PID, CID>>
     where
@@ -390,8 +379,6 @@ impl<PID, CID> PsuStore<PID, CID> {
         self.psus.iter().find(|pd| pd.contains_category(cat_id))
     }
     /// Returns `true` if the `psu_id` contains `cat_id`.
-    /// # Errors
-    /// Returns an error if `psu_id` does not exist.
     #[inline]
     pub fn psu_contains_category(&self, psu_id: &PID, cat_id: &CID) -> Option<bool>
     where
@@ -405,7 +392,7 @@ impl<PID, CID> PsuStore<PID, CID> {
     /// Returns an error if the iterator sizes does not match.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn new<I, J>(entries: I, nns: Option<J>) -> PsuResult<Self>
+    pub fn new<I, J>(entries: I, nns: Option<J>) -> Result<Self, PsuError>
     where
         PID: Ord,
         I: IntoIterator<Item = PsuHeader<PID>>,
@@ -446,7 +433,7 @@ impl<PID, CID> PsuStore<PID, CID> {
                         .expect("f64 -> u32");
                     PsuData::<PID, CID>::try_new(h, nn_size)
                 })
-                .collect::<PsuResult<Vec<PsuData<PID, CID>>>>()?
+                .collect::<Result<Vec<PsuData<PID, CID>>, PsuError>>()?
         };
 
         // Remove duplicate keys

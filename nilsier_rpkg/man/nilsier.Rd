@@ -32,7 +32,7 @@ If a matrix is supplied, the order is also assumed to be in the parameter list o
 \item{category}{the category identifier (integer).}
 \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
 }
-If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+If the columns (or items) are unnamed, the order of the columns (or items) is assumed to be
 according to the order given by the parameter list.
 If a matrix is supplied, the order is also assumed to be in the parameter list order.}
 
@@ -98,6 +98,6 @@ neighbourhood size of the smallest PSU, given by \code{neighbourhood_size}.
 }
 }
 \examples{
-obj = nilsier(psus, category_psu_map, tracts, plots);
+obj = nilsier(psus, categories, tracts, plots);
 
 }

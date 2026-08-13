@@ -40,7 +40,7 @@
 #' }
 #'
 #' @examples
-#' obj = nilsier(psus, category_psu_map, tracts, plots);
+#' obj = nilsier(psus, categories, tracts, plots);
 #'
 #' @export
 nilsier = function(
@@ -93,8 +93,6 @@ nilsier = function(
     var = diag(obj$category_covariances),
     pos = obj$positive_tracts_per_category
   );
-
-  colnames(ne) = c("Cat. ID", "Est. total", "Est. variance", "Positive tracts");
 
   class(ne) = c("nilsier", class(ne));
 

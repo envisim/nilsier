@@ -29,7 +29,7 @@ The returned list has the following components:
 Produces summary statistics for a \link{nilsier} object.
 }
 \examples{
-obj = nilsier(plots, tracts, psus, category_psu_map);
+obj = nilsier(psus, categories, tracts, plots);
 summary(obj);
 
 }

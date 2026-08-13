@@ -12,7 +12,7 @@ prepare_categories(categories)
 \item{category}{the category identifier (integer).}
 \item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
 }
-If the columns (or items) are unnamed, the order of the columns (or items) are assumed to be
+If the columns (or items) are unnamed, the order of the columns (or items) is assumed to be
 according to the order given by the parameter list.
 If a matrix is supplied, the order is also assumed to be in the parameter list order.}
 }
@@ -20,14 +20,14 @@ If a matrix is supplied, the order is also assumed to be in the parameter list o
 A data frame
 \describe{
 \item{category}{the category identifier (integer).}
-\item{psu}{the PSU identifier of the smallest PSu in which the category can appear (integer).}
+\item{psu}{the PSU identifier of the smallest PSU in which the category can appear (integer).}
 }
 }
 \description{
 Prepare a category object, which can be either a data frame or a list.
 }
 \examples{
-prepped_cats = prepare_categories(category_psu_map);
+prepped_cats = prepare_categories(categories);
 
 }
 \seealso{

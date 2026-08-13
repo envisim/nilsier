@@ -18,19 +18,8 @@ use std::mem::replace;
 
 use envisim_utils::utils::Number;
 use num_traits::ConstZero;
-use thiserror::Error;
 
-#[non_exhaustive]
-#[derive(Error, Debug, Clone)]
-pub enum CatError {
-    #[error("CAT ID ({0}) not found")]
-    CatIdNotFound(String),
-    #[error("CAT ID ({0}) already exist")]
-    CatIdCollision(String),
-}
-// /// Shorthand for `Result` with [`CatError`] error type.
-// type CatResult<T> = Result<T, CatError>;
-
+/// An ordered pair of category IDs
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CatIdPair<CID>(CID, CID);
@@ -189,6 +178,19 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
             store: Vec::with_capacity(capacity),
         }
     }
+    /// Reset with categories
+    #[inline]
+    pub fn initialize<'bitem, I>(&mut self, categories: I)
+    where
+        CID: Copy + Ord + 'bitem,
+        VAL: ConstZero,
+        I: Iterator<Item = &'bitem CID>,
+    {
+        self.clear();
+        for cat in categories {
+            self.insert((*cat, VAL::ZERO));
+        }
+    }
     /// Returns the index of a category
     /// # Errors
     /// Returns an error if the category does not exist
@@ -250,6 +252,16 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     /// Clears the store
     #[inline]
     pub fn clear(&mut self) { self.store.clear() }
+    /// Resets all categories to zero
+    #[inline]
+    pub fn reset_to_zero(&mut self)
+    where
+        VAL: ConstZero,
+    {
+        for ct in self.iter_mut() {
+            *ct.get_mut() = VAL::ZERO;
+        }
+    }
     /// Returns an iterator over the store
     #[must_use]
     #[inline]
@@ -287,6 +299,19 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
                 self.store.insert(idx, new);
             }
         }
+    }
+    /// Adds a value to a category
+    #[inline]
+    pub fn add_existing_value<PAIR>(&mut self, pair: PAIR) -> Option<()>
+    where
+        CID: Ord,
+        VAL: Number,
+        PAIR: Into<CategoryValue<CID, VAL>>,
+    {
+        let new = pair.into();
+        let idx = self.store.binary_search(&new).ok()?;
+        self.store[idx].add(*new.get());
+        Some(())
     }
     /// Returns the sum of the values in the sore
     #[must_use]

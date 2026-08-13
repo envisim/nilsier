@@ -21,13 +21,17 @@ use std::num::NonZeroU32;
 use envisim_utils::matrix::Dimensions;
 use envisim_utils::sampling_options::SpreadingOptions;
 use envisim_utils::utils::SliceView;
-use nilsier::psu::PsuHeader;
+use nilsier::psu::{
+    PsuHeader,
+    PsuStore,
+};
 use nilsier::tract::{
-    Area,
-    TractHeaderEntry,
+    Tract,
+    TractStore,
     TractValueEntry,
 };
 use nilsier::{
+    Area,
     CovarianceMatrix,
     CovarianceStrategy,
     EstimatePerCategory,
@@ -154,9 +158,7 @@ mod spreading_data {
         }
         /// Returns an iterator over the ids
         #[inline]
-        pub fn id_iter(
-            &self,
-        ) -> impl ExactSizeIterator<Item = TractId> + DoubleEndedIterator + use<'_> {
+        pub fn id_iter(&self) -> impl ExactSizeIterator<Item = TractId> + Clone + use<'_> {
             TractId::from_sexp(&self.ids)
         }
         /// Returns true if `id` exists in the collection
@@ -170,23 +172,26 @@ mod spreading_data {
         #[inline]
         fn len(&self) -> NonZeroUsize { self.data.nrow() }
         #[inline]
-        fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + DoubleEndedIterator {
-            self.id_iter()
-        }
+        fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + Clone { self.id_iter() }
         #[inline]
         fn dimensions(&self) -> NonZeroUsize { self.data.ncol() }
         #[inline]
         fn contains(&self, id: Self::Id) -> bool { self.contains(id) }
         #[inline]
-        fn get_coord(&self, id: Self::Id, dim: usize) -> Option<Self::Value> {
-            self.data.get_coord(id.internal(), dim)
+        fn coord(&self, id: Self::Id, dim: usize) -> Option<&Self::Value> {
+            self.data.coord(id.internal(), dim)
         }
         #[inline]
-        fn get_coords(
+        unsafe fn coord_unchecked(&self, id: Self::Id, dim: usize) -> &Self::Value {
+            self.data.coord_unchecked(id.internal(), dim)
+        }
+        #[inline]
+        fn coords(
             &self,
             id: Self::Id,
-        ) -> Option<impl ExactSizeIterator<Item = &Self::Value> + DoubleEndedIterator> {
-            self.data.get_coords(id.internal())
+        ) -> Option<impl ExactSizeIterator<Item = &Self::Value> + DoubleEndedIterator + Clone>
+        {
+            self.data.coords(id.internal())
         }
     }
 }
@@ -207,23 +212,23 @@ impl PsuList {
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let ids: IntegerSexpFatPtr = list
             .get("psu")
-            .ok_or(savvy_err!("cannot find list item 'psus'"))?
+            .ok_or(savvy_err!("cannot find list item 'psu'"))?
             .try_into()?;
 
         let sizes: IntegerSexpFatPtr = list
             .get("size")
-            .ok_or(savvy_err!("cannot find list item 'sizes'"))?
+            .ok_or(savvy_err!("cannot find list item 'size'"))?
             .try_into()?;
 
         if ids.len() != sizes.len() {
-            return Err(savvy_err!("'psus' and 'sizes' must match in length"));
+            return Err(savvy_err!("'psu' and 'size' must match in length"));
         }
 
         let nn_sizes = match list.get("nn_size") {
             Some(nn) => {
                 let nn: IntegerSexpFatPtr = nn.try_into()?;
                 if ids.len() != nn.len() {
-                    return Err(savvy_err!("'psus' and 'nn_sizes' must match in length"));
+                    return Err(savvy_err!("'psu' and 'nn_size' must match in length"));
                 }
                 Some(nn)
             }
@@ -236,14 +241,10 @@ impl PsuList {
             nn_sizes,
         })
     }
-    /// Construct new `Nils`
+    /// Construct new `PsuStore`
+    #[expect(clippy::needless_pass_by_value, reason = "no use for categories after")]
     #[inline]
-    fn as_nils(
-        &self,
-        cap: usize,
-        frame_area: Area,
-        tract_area: Area,
-    ) -> savvy::Result<Nils<i32, i32, TractId>> {
+    fn as_psu_store(&self, categories: CategoryList) -> savvy::Result<PsuStore<i32, i32>> {
         let headers: Vec<PsuHeader<i32>> = self
             .psus
             .iter()
@@ -266,8 +267,14 @@ impl PsuList {
             None => None,
         };
 
-        let nils = Nils::new(headers.into_iter(), nn_sizes, frame_area, tract_area, cap)?;
-        Ok(nils)
+        let mut store = PsuStore::new(headers.into_iter(), nn_sizes)?;
+
+        // add categories
+        for (cat, psu) in categories.categories.iter().zip(categories.psus.iter()) {
+            store.insert_category(psu, *cat)?;
+        }
+
+        Ok(store)
     }
 }
 
@@ -297,14 +304,6 @@ impl CategoryList {
         }
 
         Ok(Self { categories, psus })
-    }
-    /// Add categories to `Nils`
-    #[inline]
-    fn nils<TID>(&self, nils: &mut Nils<i32, i32, TID>) -> savvy::Result<()> {
-        for (cat, psu) in self.categories.iter().zip(self.psus.iter()) {
-            nils.add_category_to_psu(psu, *cat)?;
-        }
-        Ok(())
     }
 }
 
@@ -354,15 +353,37 @@ impl TractList {
             auxiliaries,
         })
     }
-    /// Add tracts to `Nils`
+    /// Construct a `TractStore`
+    #[expect(clippy::needless_pass_by_value, reason = "no use for entries after")]
     #[inline]
-    fn nils<CID>(&self, nils: &mut Nils<i32, CID, TractId>) -> savvy::Result<()> {
-        nils.add_tracts(
-            TractId::from_sexp(&self.tracts)
-                .zip(self.psus.iter())
-                .map(|(tract, psu)| TractHeaderEntry::new(tract, *psu)),
-        )?;
-        Ok(())
+    fn as_tract_store(
+        &self,
+        entries: TractEntryList,
+        tract_area: Area,
+    ) -> savvy::Result<TractStore<TractId, i32, i32>> {
+        // Prep store
+        let mut store = TractStore::with_capacity(self.tracts.len(), tract_area);
+
+        for tract in TractId::from_sexp(&self.tracts)
+            .zip(self.psus.iter())
+            .map(|(tract, psu)| Tract::new(tract, *psu))
+        {
+            store.insert(tract)?;
+        }
+
+        // Add entries
+        let cats = entries.categories.data();
+        let dws = entries.dws.data();
+        let values = entries.values.data();
+
+        for (i, tract) in entries.tracts.iter().enumerate() {
+            // Hacky as tract value entry doesnt need the internal part of the tract id
+            let tid = TractId::from((0_usize, *tract));
+            let entry = TractValueEntry::new(tid, cats[i], dws[i], values[i])?;
+            store.add_value_from_entry(entry)?;
+        }
+
+        Ok(store)
     }
 }
 
@@ -412,21 +433,6 @@ impl TractEntryList {
             dws: dw_vec,
             values: value_vec,
         })
-    }
-    /// Add tract entries to `Nils`
-    #[inline]
-    fn nils<PID>(&self, nils: &mut Nils<PID, i32, TractId>) -> savvy::Result<()> {
-        let cats = self.categories.data();
-        let dws = self.dws.data();
-        let values = self.values.data();
-
-        for (i, tract) in self.tracts.iter().enumerate() {
-            // Hacky as tract value entry doesnt need the internal part of the tract id
-            let tid = TractId::from((0_usize, *tract));
-            nils.add_value_entry(TractValueEntry::new(tid, cats[i], dws[i], values[i])?)?;
-        }
-
-        Ok(())
     }
 }
 
@@ -523,24 +529,22 @@ fn rust_nils_estimate(
     variance_strategy: &str,
 ) -> savvy::Result<Sexp> {
     // Prep data
-    let frame_area = Area::new(frame_area)?;
-    let tract_area = Area::new(tract_area)?;
+    let frame_area = Area::new(frame_area).ok_or(savvy_err!("frame area must be positive"))?;
+    let tract_area = Area::new(tract_area).ok_or(savvy_err!("tract area must be positive"))?;
     let psus = PsuList::from_list(&psus)?;
     let categories = CategoryList::from_list(&categories)?;
     let tracts = TractList::from_list(&tracts)?;
     let values = TractEntryList::from_list(&values)?;
 
-    // Construct Nils
-    let mut nils = psus.as_nils(tracts.tracts.len(), frame_area, tract_area)?;
-    categories.nils(&mut nils)?;
-    tracts.nils(&mut nils)?;
-    values.nils(&mut nils)?;
+    // Construct PSU store
+    let psu_store = psus.as_psu_store(categories)?;
+    let tract_store = tracts.as_tract_store(values, tract_area)?;
+    let nils = Nils::new(psu_store, tract_store, frame_area)?;
 
     // Estimate per category
     let estimates = nils.estimate_per_category();
 
     // Covariance matrix
-
     let covariances = match (variance_strategy, SpreadingData::new(tracts)) {
         ("nearest_neighbours", Some(sd)) => {
             let so = SpreadingOptions::new(sd).set_bucket_size(30)?;

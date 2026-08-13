@@ -15,13 +15,8 @@
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
 use std::convert::Infallible;
-use std::fmt::{
-    Display,
-    Formatter,
-    Result as FmtResult,
-};
+use std::fmt::Display;
 use std::hash::Hash;
-use std::ops::Deref;
 
 use rustc_hash::{
     FxBuildHasher,
@@ -29,26 +24,45 @@ use rustc_hash::{
 };
 use thiserror::Error;
 
-use crate::category::{
-    CatError,
-    CategoryStore,
-};
+use crate::category::CategoryStore;
+use crate::utils::Area;
 
+/// Tract errors
 #[non_exhaustive]
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug)]
 pub enum TractError {
-    #[error("Tract ID ({0}) not found")]
-    TractIdNotFound(String),
-    #[error("Tract ID ({0}) already exist")]
-    TractIdCollision(String),
-    #[error("Area ({0}) must be positive")]
-    InvalidArea(f64),
+    /// Design weight must be positive
     #[error("Design weight ({0}) must be positive")]
     InvalidDesignWeight(f64),
+    /// Value must be non-negative
     #[error("Value ({0}) must be non-negative")]
     InvalidValue(f64),
-    #[error(transparent)]
-    Category(#[from] CatError),
+    /// ID not found
+    #[error("Tract ID ({0}) not found")]
+    IdNotFound(String),
+    /// ID collision
+    #[error("Tract ID ({0}) collision")]
+    IdCollision(String),
+}
+impl TractError {
+    /// Returns `IdNotFound` error for TID
+    #[must_use]
+    #[inline]
+    fn id_not_found<TID>(id: &TID) -> Self
+    where
+        TID: Display,
+    {
+        Self::IdNotFound(id.to_string())
+    }
+    /// Returns `IdCollision` error for TID
+    #[must_use]
+    #[inline]
+    fn id_collision<TID>(id: &TID) -> Self
+    where
+        TID: Display,
+    {
+        Self::IdCollision(id.to_string())
+    }
 }
 impl From<Infallible> for TractError {
     #[expect(
@@ -57,39 +71,6 @@ impl From<Infallible> for TractError {
     )]
     #[inline]
     fn from(_: Infallible) -> Self { unreachable!() }
-}
-/// Shorthand for `Result` with [`TractError`] error type.
-type TractResult<T> = Result<T, TractError>;
-
-/// Connects tract to a PSU
-#[must_use]
-#[derive(Clone, Copy, Debug)]
-pub struct TractHeaderEntry<TID, PID> {
-    /// tract id of header
-    tract_id: TID,
-    /// psu id of header
-    psu_id: PID,
-}
-impl<TID, PID> TractHeaderEntry<TID, PID> {
-    /// Constructs a new header entry
-    #[inline]
-    pub fn new(tract_id: TID, psu_id: PID) -> Self { Self { tract_id, psu_id } }
-    /// Returns the tract ID of the header
-    #[inline]
-    pub fn tract_id(&self) -> &TID { &self.tract_id }
-    /// Sets the tract ID of the header
-    #[inline]
-    pub fn set_tract_id(&mut self, tract_id: TID) { self.tract_id = tract_id; }
-    /// Returns the PSU ID of the header
-    #[inline]
-    pub fn psu_id(&self) -> &PID { &self.psu_id }
-    /// Sets the PSU ID of the header
-    #[inline]
-    pub fn set_psu_id(&mut self, psu_id: PID) { self.psu_id = psu_id; }
-}
-impl<TID, PID> Borrow<TID> for TractHeaderEntry<TID, PID> {
-    #[inline]
-    fn borrow(&self) -> &TID { &self.tract_id }
 }
 
 /// Contains values from a tract
@@ -110,7 +91,12 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     /// # Errors
     /// Returns an error if `design_weight` is non-positive or `value` is negative.
     #[inline]
-    pub fn new(tract_id: TID, cat_id: CID, design_weight: f64, value: f64) -> TractResult<Self> {
+    pub fn new(
+        tract_id: TID,
+        cat_id: CID,
+        design_weight: f64,
+        value: f64,
+    ) -> Result<Self, TractError> {
         let mut tve = Self {
             tract_id,
             cat_id,
@@ -141,7 +127,7 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     /// # Errors
     /// Returns an error if `design_weight` is non-positive.
     #[inline]
-    pub fn set_design_weight(&mut self, design_weight: f64) -> TractResult<()> {
+    pub fn set_design_weight(&mut self, design_weight: f64) -> Result<(), TractError> {
         if !design_weight.is_finite() && design_weight <= 0.0 {
             Err(TractError::InvalidDesignWeight(design_weight))
         } else {
@@ -161,7 +147,7 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     /// # Errors
     /// Returns an error if `value` is negative.
     #[inline]
-    pub fn set_value(&mut self, value: f64) -> TractResult<()> {
+    pub fn set_value(&mut self, value: f64) -> Result<(), TractError> {
         if !value.is_finite() && value < 0.0 {
             Err(TractError::InvalidValue(value))
         } else {
@@ -175,59 +161,7 @@ impl<TID, CID> Borrow<TID> for TractValueEntry<TID, CID> {
     fn borrow(&self) -> &TID { &self.tract_id }
 }
 
-#[must_use]
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
-pub struct Area(f64);
-impl Area {
-    /// Checks if `area` is a valid `Area`.
-    /// # Errors
-    /// Returns an error if `area` is non-positive.
-    #[inline]
-    fn check(area: f64) -> TractResult<()> {
-        if !area.is_finite() && area <= 0.0 {
-            Err(TractError::InvalidArea(area))
-        } else {
-            Ok(())
-        }
-    }
-    /// Constructs a new `Area` from `area`
-    /// # Errors
-    /// Returns an error if `area` is non-positive.
-    #[inline]
-    pub fn new(area: f64) -> TractResult<Self> {
-        Self::check(area)?;
-        Ok(Self(area))
-    }
-    /// Returns the area as a `f64`
-    #[must_use]
-    #[inline]
-    pub fn get(&self) -> f64 { self.0 }
-    /// Sets the internal area to `area`.
-    /// # Errors
-    /// Returns an error if `area` is non-positive.
-    #[inline]
-    pub fn set(&mut self, area: f64) -> TractResult<()> {
-        Self::check(area)?;
-        self.0 = area;
-        Ok(())
-    }
-}
-impl Deref for Area {
-    type Target = f64;
-    #[inline]
-    fn deref(&self) -> &Self::Target { &self.0 }
-}
-impl TryFrom<f64> for Area {
-    type Error = TractError;
-    #[inline]
-    fn try_from(value: f64) -> Result<Self, Self::Error> { Self::new(value) }
-}
-impl Display for Area {
-    #[inline]
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult { write!(f, "Area ({})", self.0) }
-}
-
+/// A tract
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct Tract<TID, PID, CID> {
@@ -241,13 +175,11 @@ pub struct Tract<TID, PID, CID> {
 impl<TID, PID, CID> Tract<TID, PID, CID> {
     /// Constructs a new tract info container
     #[inline]
-    pub fn new(header: TractHeaderEntry<TID, PID>) -> Self {
-        let TractHeaderEntry { tract_id, psu_id } = header;
-        let totals = CategoryStore::new();
+    pub fn new(tract_id: TID, psu_id: PID) -> Self {
         Self {
             tract_id,
             psu_id,
-            totals,
+            totals: CategoryStore::new(),
         }
     }
     /// Returns the identifier of the tract.
@@ -261,7 +193,7 @@ impl<TID, PID, CID> Tract<TID, PID, CID> {
     pub fn totals(&self) -> &CategoryStore<CID, f64> { &self.totals }
     /// Adds an entry to the tract
     #[inline]
-    pub fn add(&mut self, entry: TractValueEntry<TID, CID>, area: &Area)
+    pub fn add(&mut self, entry: TractValueEntry<TID, CID>, area: Area)
     where
         CID: Ord,
     {
@@ -272,10 +204,6 @@ impl<TID, PID, CID> Tract<TID, PID, CID> {
 impl<TID, PID, CID> Borrow<TID> for Tract<TID, PID, CID> {
     #[inline]
     fn borrow(&self) -> &TID { &self.tract_id }
-}
-impl<TID, PID, CID> From<TractHeaderEntry<TID, PID>> for Tract<TID, PID, CID> {
-    #[inline]
-    fn from(header: TractHeaderEntry<TID, PID>) -> Self { Tract::new(header) }
 }
 
 /// A set of tracts
@@ -290,7 +218,7 @@ pub struct TractStore<TID, PID, CID> {
 impl<TID, PID, CID> TractStore<TID, PID, CID> {
     /// Constructs a new, empty, store with some allocated `capacity`.
     #[inline]
-    pub fn with_capactity(capacity: usize, tract_area: Area) -> Self {
+    pub fn with_capacity(capacity: usize, tract_area: Area) -> Self {
         Self {
             tracts: FxHashMap::with_capacity_and_hasher(capacity, FxBuildHasher),
             tract_area,
@@ -300,7 +228,7 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
     /// # Errors
     /// Returns an error if the tracts ID already exists.
     #[inline]
-    pub fn insert(&mut self, tract: Tract<TID, PID, CID>) -> TractResult<()>
+    pub fn insert(&mut self, tract: Tract<TID, PID, CID>) -> Result<(), TractError>
     where
         TID: Copy + Display + Eq + Hash,
     {
@@ -310,7 +238,7 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
                 e.insert(tract);
                 Ok(())
             }
-            Entry::Occupied(_) => Err(TractError::TractIdCollision(id.to_string())),
+            Entry::Occupied(_) => Err(TractError::id_collision(&id)),
         }
     }
     /// Returns a reference to a tract by ID.
@@ -323,18 +251,14 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
     }
     /// Returns the stored value of a category in a tract by IDs.
     /// If no `cat_id` is found for the tract, the value defaults to `0.0`.
-    /// # Errors
-    /// Returns an error if the tract ID cannot be found in the store.
     #[inline]
-    pub fn get_category_value(&self, tract_id: &TID, cat_id: &CID) -> TractResult<f64>
+    pub fn get_category_value(&self, tract_id: &TID, cat_id: &CID) -> Option<f64>
     where
         TID: Display + Eq + Hash,
         CID: Ord,
     {
-        let tract = self
-            .get(tract_id)
-            .ok_or_else(|| TractError::TractIdNotFound(tract_id.to_string()))?;
-        Ok(tract.totals().get(cat_id).copied().unwrap_or(0.0))
+        let tract = self.get(tract_id)?;
+        Some(tract.totals().get(cat_id).copied().unwrap_or(0.0))
     }
     /// Returns the area of a tract
     #[inline]
@@ -357,17 +281,20 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
     /// # Errors
     /// Returns an error if the tract cannot be found.
     #[inline]
-    pub fn add_value_from_entry(&mut self, entry: TractValueEntry<TID, CID>) -> TractResult<()>
+    pub fn add_value_from_entry(
+        &mut self,
+        entry: TractValueEntry<TID, CID>,
+    ) -> Result<(), TractError>
     where
         TID: Copy + Display + Eq + Hash,
         CID: Ord,
     {
-        let tract_id = *entry.tract_id();
-        let area = *self.area();
-        self.tracts
-            .get_mut(&tract_id)
-            .map(|tract| tract.add(entry, &area))
-            .ok_or(TractError::TractIdNotFound(tract_id.to_string()))?;
+        let tract_id = entry.tract_id();
+        let tract = self
+            .tracts
+            .get_mut(tract_id)
+            .ok_or(TractError::id_not_found(tract_id))?;
+        tract.add(entry, self.tract_area);
         Ok(())
     }
 }

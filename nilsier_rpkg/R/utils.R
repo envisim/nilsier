@@ -174,12 +174,11 @@ prepare_psus = function(psus, tracts = NULL, neighbourhood_size = 4L) {
 
   # Count the number of tracts matching each PSU. Since PSUs are large->small, we need to reverse
   # the order before the cumsum, and reverse it back after.
-  psus$sizes = rev(cumsum(rev(vapply(psus, \(x) sum(tracts$psu == x), 0L))));
-  storage.mode(sizes) = "integer";
+  psus$size = rev(cumsum(rev(vapply(psus$psu, \(x) sum(tracts$psu == x), 0L))));
+  storage.mode(psus$size) = "integer";
 
 
   if (!("nn_size" %in% names(psus))) {
-
     ns = as.integer(neighbourhood_size);
     if (is.null(ns)) {
       warning("'neighbourhood_size' is NULL ... setting to 4L");
@@ -189,8 +188,8 @@ prepare_psus = function(psus, tracts = NULL, neighbourhood_size = 4L) {
       ns = 4L;
     }
 
-    min_size = psus$sizes[length(psus$sizes)];
-    psus$nn_size = as.integer(round(ns * sizes / min_size));
+    min_size = psus$size[length(psus$size)];
+    psus$nn_size = as.integer(round(ns * psus$size / min_size));
   }
 
   .assert_numeric(psus$nn_size, "'nn_size'");
@@ -222,7 +221,7 @@ prepare_psus = function(psus, tracts = NULL, neighbourhood_size = 4L) {
 #' }
 #'
 #' @examples
-#' prepped_cats = prepare_categories(category_psu_map);
+#' prepped_cats = prepare_categories(categories);
 #'
 #' @family prepare
 #' @export

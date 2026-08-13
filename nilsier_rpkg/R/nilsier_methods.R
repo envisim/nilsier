@@ -41,7 +41,7 @@ print.nilsier = function(x, complete = TRUE, ...) {
 #' }
 #'
 #' @examples
-#' obj = nilsier(plots, tracts, psus, category_psu_map);
+#' obj = nilsier(psus, categories, tracts, plots);
 #' summary(obj);
 #'
 #' @method summary nilsier
@@ -121,7 +121,7 @@ efilter = function(obj, ...) {
 #' @returns a filtered [nilsier] object.
 #'
 #' @examples
-#' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+#' obj = nilsier(psus, categories, tracts, plots);
 #'
 #' # Keep only category with ID 1
 #' efilter(obj, categories = 1)
@@ -137,7 +137,7 @@ efilter.nilsier = function(obj, psus = NULL, categories = NULL, ...) {
 
   if (!is.null(psus)) {
     filter = filter & vapply(
-      seq_along(obj),
+      seq_len(nrow(obj)),
       \(i) {
         psu = attr(obj, "categories")$psu[attr(obj, "categories")$category == obj$cat_id[i]];
         psu %in% psus
@@ -173,7 +173,7 @@ efilter.nilsier = function(obj, psus = NULL, categories = NULL, ...) {
 #' }
 #'
 #' @examples
-#' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+#' obj = nilsier(psus, categories, tracts, plots);
 #' coef(obj);
 #'
 #' @method coef nilsier
@@ -199,7 +199,7 @@ coef.nilsier = function(obj, ...) {
 #' @returns the covariance matrix of the [nilsier] object.
 #'
 #' @examples
-#' obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+#' obj = nilsier(psus, categories, tracts, plots);
 #' vcov(obj);
 #'
 #' @method vcov nilsier

@@ -20,7 +20,7 @@ the covariance matrix of the \link{nilsier} object.
 Accesses the covariance matrix of a \link{nilsier} object.
 }
 \examples{
-obj = NilsEstimate(plots, tracts, psus, category_psu_map);
+obj = nilsier(psus, categories, tracts, plots);
 vcov(obj);
 
 }
