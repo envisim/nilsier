@@ -12,7 +12,8 @@ install.packages("nilsier");
 ```
 
 ### Using `devtools` or `remotes`
-Installing e.g. the development branch of `nilsier`:
+Installing e.g. the development branch of `nilsier` requires a working installation of [`rust`](https://rust-lang.org/) (1.84.1).
+
 
 ```{r}
 # Using devtools
