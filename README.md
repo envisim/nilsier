@@ -11,22 +11,19 @@ monitoring programs governed by the [Swedish University of Agricultural Sciences
 install.packages("nilsier");
 ```
 
-### Using `devtools` or `remotes`
+### Using `pak`
 Installing e.g. the development branch of `nilsier` requires a working installation of [`rust`](https://rust-lang.org/) (1.84.1).
 
 
 ```{r}
 # Using devtools
-# install.packages("devtools");
-devtools::install_github("envisim/nilsier", ref = "develop");
-# or for the
-
-# Using remotes
-# install.packages("remotes");
-remotes::install_github("envisim/nilsier", ref = "develop");
+# install.packages("pak");
+pak::pkg_install("nilsier=github::envisim/nilsier/nilsier_rpkg@develop");
 ```
 
 ### Cloning the repo
+Installing e.g. the development branch of `nilsier` requires a working installation of [`rust`](https://rust-lang.org/) (1.84.1).
+
 ```{bash}
 git clone git@github.com:envisim/nilsier.git
 git checkout develop
