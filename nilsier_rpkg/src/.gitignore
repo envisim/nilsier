@@ -1,0 +1,8 @@
+*.o
+*.so
+*.dll
+target
+.cargo
+vendor
+
+vendor.tar.xz

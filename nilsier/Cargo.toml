@@ -1,0 +1,26 @@
+[package]
+name = "nilsier"
+version = "0.1.0"
+edition = "2024"
+authors = ["Wilmer Prentius <wilmer.prentius@slu.se>"]
+homepage = "https://envisim.se"
+repository = "https://github.com/envisim/nilsier"
+description = "Design-based estimators for the National Inventories of Landscapes in Sweden (NILS)"
+keywords = ["sampling", "statistics"]
+categories = ["mathematics", "science", "science::geo"]
+license = "AGPL-3.0-only"
+include = ["/src", "LICENSE", "README.md", "CHANGELOG.md"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints]
+workspace = true
+
+[dependencies]
+envisim_utils = {version="0.7.0", default-features=false}
+num-traits = "0.2.19"
+rustc-hash = "2.1.1"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+

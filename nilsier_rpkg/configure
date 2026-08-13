@@ -1,0 +1,212 @@
+#!/bin/sh
+
+# Taken from https://github.com/PRQL/prqlc-r
+
+export PATH="$PATH:$HOME/.cargo/bin"
+
+NOT_CRAN=${NOT_CRAN:-"false"}
+LIB_BUILD=${LIB_BUILD:-""}
+
+RUST_LIBNAME="rnilsier"
+LIBNAME="lib${RUST_LIBNAME}.a"
+LIB_DEFAULT_PATH="$(pwd)/tools/${LIBNAME}"
+LIB_PATH=${LIB_PATH:-${LIB_DEFAULT_PATH}}
+
+check_cargo() {
+  if [ ! "$(command -v cargo)" ]; then
+    cat <<EOF
+------------------------- [RUST NOT FOUND] -------------------------
+The 'cargo' command was not found on the PATH. Please install rustc
+from: https://www.rust-lang.org/tools/install
+
+Alternatively, you may install cargo from your OS package manager:
+  - Debian/Ubuntu: apt-get install cargo
+  - Fedora/CentOS: dnf install cargo
+  - macOS: brew install rustc
+--------------------------------------------------------------------
+EOF
+    exit 1
+  else
+    cat <<EOF
+--------------------------- [RUST FOUND] ---------------------------
+$(cargo -V)
+
+$(rustc -vV)
+--------------------------------------------------------------------
+EOF
+  fi
+}
+
+check_rustup() {
+  if [ "$(command -v rustup)" ]; then
+    cat <<EOF
+-------------------------- [RUSTUP FOUND] --------------------------
+$(rustup show)
+--------------------------------------------------------------------
+EOF
+  else
+    cat <<EOF
+------------------------ [RUSTUP NOT FOUND] ------------------------
+The 'rustup' command was not found on the PATH.
+--------------------------------------------------------------------
+EOF
+  fi
+}
+
+check_emscripten() {
+  if [ "$(uname)" = "Emscripten" ]; then
+    export TARGET="wasm32-unknown-emscripten"
+  fi
+}
+
+check_bin_lib() {
+  if [ "${NOT_CRAN}" = "true" ] && [ -z "${LIB_BUILD}" ]; then
+    LIB_BUILD="false"
+  fi
+
+  if [ "${LIB_BUILD}" = "false" ]; then
+    if [ -f "tools/lib-sums.tsv" ] && [ ! -f "${LIB_PATH}" ]; then
+      cat <<EOF
+---------------- [TRY TO DOWNLOAD PRE-BUILT BINARY] ----------------
+The library was not found at <${LIB_PATH}>.
+Trying to download pre-built binary from the Internet...
+--------------------------------------------------------------------
+EOF
+      "${R_HOME}/bin${R_ARCH_BIN}/Rscript" "tools/prep-lib.R" && echo "Done!" ||
+        echo "Failed to download pre-built binary."
+    fi
+
+    if [ -f "${LIB_PATH}" ] && [ "${LIB_PATH}" != "${LIB_DEFAULT_PATH}" ]; then
+      cat <<EOF
+------------------------- [COPYING BINARY] -------------------------
+Copying <${LIB_PATH}> to <${LIB_DEFAULT_PATH}>.
+--------------------------------------------------------------------
+EOF
+      mkdir -p "$(dirname "${LIB_DEFAULT_PATH}")"
+      cp "${LIB_PATH}" "${LIB_DEFAULT_PATH}" && echo "Done!" || echo "Failed to copy binary."
+    fi
+
+    if [ -f "${LIB_DEFAULT_PATH}" ]; then
+      cat <<EOF
+---------------------- [LIBRARY BINARY FOUND] ----------------------
+The library was found at <${LIB_DEFAULT_PATH}>. No need to build it.
+
+Note: rustc version: $(command -v rustc >/dev/null && rustc -V || echo "Not found")
+--------------------------------------------------------------------
+EOF
+      export TARGET=""
+      generate_makevars
+    fi
+    cat <<EOF
+-------------------- [LIBRARY BINARY NOT FOUND] --------------------
+The library was not found at <${LIB_PATH}>.
+Falling back to building from source.
+--------------------------------------------------------------------
+EOF
+  fi
+}
+
+detect_target_option() {
+  for option in "$@"; do
+    case "${option}" in
+    --host=*)
+      specified_target="$(echo "${option}" | sed -e 's/--host=//' | sed -E 's/([0-9]+\.)*[0-9]+$//')"
+      cat <<EOF
+------------------------ [DETECTED TARGET] ------------------------
+The target was specified as <${specified_target}> via the '--host' option.
+-------------------------------------------------------------------
+EOF
+      export TARGET="${specified_target}"
+      ;;
+    *) ;;
+    esac
+    shift
+  done
+}
+
+check_msrv() {
+  rustc_version="$(rustc -V | grep -o '[0-9]\+\(\.[0-9]\+\)\+')"
+  package_rust_version="$(
+    cargo metadata --manifest-path src/rust/Cargo.toml --no-deps --format-version 1 |
+      grep -o '"rust_version"\s*:\s*"[0-9]\+\(\.[0-9]\+\)\+"' |
+      grep -o '[0-9]\+\(\.[0-9]\+\)\+'
+  )"
+  lower_version="$(echo "${rustc_version} ${package_rust_version}" | tr ' ' '\n' | sort -V | head -n1)"
+
+  if [ "${rustc_version}" != "${package_rust_version}" ] && [ "${rustc_version}" = "${lower_version}" ]; then
+    cat <<EOF
+------------------- [NOT SUPPORTED RUST VERSION] -------------------
+The MSRV of this package is '${package_rust_version}',
+so this installation may fail with the current rustc version '${rustc_version}'.
+If this happens, please install the newer version of rustc
+from: https://www.rust-lang.org/tools/install
+--------------------------------------------------------------------
+EOF
+  else
+    cat <<EOF
+----------------- [MINIMUM SUPPORTED RUST VERSION] -----------------
+The MSRV of this package is '${package_rust_version}'.
+--------------------------------------------------------------------
+EOF
+  fi
+}
+
+generate_makevars() {
+  for suffix in "" ".win"; do
+    makefile="src/Makevars${suffix}"
+    sed \
+      -e "s|@RUST_LIBNAME@|${RUST_LIBNAME}|" \
+      -e "s|@TARGET@|${TARGET}|" \
+      -e "s|@PROFILE@|${PROFILE}|" \
+      -e "s|@MACOSX_DT@|${MACOSX_DT}|" \
+      "$makefile.in" >"$makefile"
+  done
+
+  exit 0
+}
+
+check_macos() {
+  # See https://github.com/oxfordcontrol/clarabel-r commit a3d5ec6
+  # rust's cc crate takes the newest target, if not MACOSX_DEPLOYMENT_TARGET is set
+  MACOSX_DT=""
+  if [ "$(uname)" = "Darwin" ]; then
+    if [ -n "$MACOSX_DEPLOYMENT_TARGET" ]; then
+      MACOSX_DT="$MACOSX_DEPLOYMENT_TARGET"
+    else
+      # test compile a c file and get version using otool
+      R_CC=`"${R_HOME}/bin/R" CMD config CC`
+      R_CFLAGS=`"${R_HOME}/bin/R" CMD config CFLAGS`
+      echo "int x;" > conftest_dt.c
+      $R_CC $R_CFLAGS -c conftest_dt.c -o conftest_dt.o 2>/dev/null
+      MACOSX_DT=`otool -l conftest_dt.o 2>/dev/null | awk '/LC_BUILD_VERSION/{found=1} found && /minos/{print $2; exit}'`
+      rm -f conftest_dt.c conftest_dt.o
+    fi
+    cat <<EOF
+----------------- [SET MACOS DEPLOYMENT TARGET] -----------------
+The MacOS Deployment target is '${MACOSX_DT}'
+--------------------------------------------------------------------
+EOF
+  fi
+}
+
+# catch DEBUG envvar, which is passed from pkgbuild::compile_dll()
+if [ "${DEBUG}" = "true" ]; then
+  PROFILE=dev
+  # PROFILE=profiling
+else
+  PROFILE=release
+fi
+
+detect_target_option "$@"
+check_bin_lib
+check_rustup
+check_cargo
+check_msrv
+check_emscripten
+check_macos
+
+TARGET="${TARGET:-$(rustc -vV | grep host | cut -d' ' -f2)}"
+
+generate_makevars
+
+
