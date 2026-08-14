@@ -356,11 +356,7 @@ impl TractList {
     /// Construct a `TractStore`
     #[expect(clippy::needless_pass_by_value, reason = "no use for entries after")]
     #[inline]
-    fn as_tract_store(
-        &self,
-        entries: TractEntryList,
-        tract_area: Area,
-    ) -> savvy::Result<TractStore<TractId, i32, i32>> {
+    fn as_tract_store(&self, tract_area: Area) -> savvy::Result<TractStore<TractId, i32, i32>> {
         // Prep store
         let mut store = TractStore::with_capacity(self.tracts.len(), tract_area);
 
@@ -369,18 +365,6 @@ impl TractList {
             .map(|(tract, psu)| Tract::new(tract, *psu))
         {
             store.insert(tract)?;
-        }
-
-        // Add entries
-        let cats = entries.categories.data();
-        let dws = entries.dws.data();
-        let values = entries.values.data();
-
-        for (i, tract) in entries.tracts.iter().enumerate() {
-            // Hacky as tract value entry doesnt need the internal part of the tract id
-            let tid = TractId::from((0_usize, *tract));
-            let entry = TractValueEntry::new(tid, cats[i], dws[i], values[i])?;
-            store.add_value_from_entry(entry)?;
         }
 
         Ok(store)
@@ -433,6 +417,23 @@ impl TractEntryList {
             dws: dw_vec,
             values: value_vec,
         })
+    }
+    /// Add entries to tract store
+    #[inline]
+    fn add_entries_to_store<PID>(&self, store: &mut TractStore<TractId, PID, i32>) {
+        // Add entries
+        let cats = entries.categories.data();
+        let dws = entries.dws.data();
+        let values = entries.values.data();
+
+        for (i, tract) in entries.tracts.iter().enumerate() {
+            // Hacky as tract value entry doesnt need the internal part of the tract id
+            let tid = TractId::from((0_usize, *tract));
+            let entry = TractValueEntry::new(tid, cats[i], dws[i], values[i])?;
+            store.add_value_from_entry(entry)?;
+        }
+
+        Ok(store)
     }
 }
 
@@ -531,14 +532,76 @@ fn rust_nils_estimate(
     // Prep data
     let frame_area = Area::new(frame_area).ok_or(savvy_err!("frame area must be positive"))?;
     let tract_area = Area::new(tract_area).ok_or(savvy_err!("tract area must be positive"))?;
+    let tracts = TractList::from_list(&tracts)?;
+
+    // Construct PSU store
+    let psu_store = {
+        let psus = PsuList::from_list(&psus)?;
+        let categories = CategoryList::from_list(&categories)?;
+        psus.as_psu_store(categories)?
+    };
+    let tract_store = {
+        let mut store = tracts.as_tract_store(tract_area)?;
+        let values = TractEntryList::from_list(&values)?;
+        values.add_entries_to_store(&mut store)?;
+        store
+    };
+    let nils = Nils::new(psu_store, tract_store, frame_area)?;
+
+    // Estimate per category
+    let estimates = nils.estimate_per_category();
+
+    // Covariance matrix
+    let covariances = match (variance_strategy, SpreadingData::new(tracts)) {
+        ("nearest_neighbours", Some(sd)) => {
+            let so = SpreadingOptions::new(sd).set_bucket_size(30)?;
+            nils.covariance_estimate_nn(&estimates, &so)?
+        }
+        _ => nils.covariance_estimate(&estimates)?,
+    };
+
+    let list = as_result_list(&estimates, &covariances)?;
+    list.into()
+}
+
+/// Ratio estimates according to NILS design
+///
+/// @keywords internal
+/// @noRd
+#[savvy]
+fn rust_nils_ratio_estimate(
+    psus: ListSexp,
+    categories: ListSexp,
+    tracts: ListSexp,
+    values_y: ListSexp,
+    values_z: ListSexp,
+    frame_area: f64,
+    tract_area: f64,
+    variance_strategy: &str,
+) -> savvy::Result<Sexp> {
+    // Prep data
+    let frame_area = Area::new(frame_area).ok_or(savvy_err!("frame area must be positive"))?;
+    let tract_area = Area::new(tract_area).ok_or(savvy_err!("tract area must be positive"))?;
     let psus = PsuList::from_list(&psus)?;
     let categories = CategoryList::from_list(&categories)?;
     let tracts = TractList::from_list(&tracts)?;
     let values = TractEntryList::from_list(&values)?;
 
     // Construct PSU store
-    let psu_store = psus.as_psu_store(categories)?;
-    let tract_store = tracts.as_tract_store(values, tract_area)?;
+    let psu_store_y = {
+        let psus = PsuList::from_list(&psus)?;
+        let categories = CategoryList::from_list(&categories)?;
+        psus.as_psu_store(categories)?
+    };
+    let psu_store_z = psu_store_1.clone();
+    let mut tract_store_x = tracts.as_tract_store(tract_area)?;
+    let mut tract_store_z = {};
+    let tract_store = {
+        let values = TractEntryList::from_list(&values)?;
+        values.add_entries_to_store(&mut store)?;
+        store
+    };
+    let tract_store_1 = tracts.as_tract_store(values, tract_area)?;
     let nils = Nils::new(psu_store, tract_store, frame_area)?;
 
     // Estimate per category
