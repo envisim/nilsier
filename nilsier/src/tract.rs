@@ -128,11 +128,11 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     /// Returns an error if `design_weight` is non-positive.
     #[inline]
     pub fn set_design_weight(&mut self, design_weight: f64) -> Result<(), TractError> {
-        if !design_weight.is_finite() && design_weight <= 0.0 {
-            Err(TractError::InvalidDesignWeight(design_weight))
-        } else {
+        if design_weight.is_finite() && 0.0 < design_weight {
             self.design_weight = design_weight;
             Ok(())
+        } else {
+            Err(TractError::InvalidDesignWeight(design_weight))
         }
     }
     /// Returns the measured value.
@@ -148,11 +148,11 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     /// Returns an error if `value` is negative.
     #[inline]
     pub fn set_value(&mut self, value: f64) -> Result<(), TractError> {
-        if !value.is_finite() && value < 0.0 {
-            Err(TractError::InvalidValue(value))
-        } else {
+        if value.is_finite() && 0.0 <= value {
             self.value = value;
             Ok(())
+        } else {
+            Err(TractError::InvalidValue(value))
         }
     }
 }
