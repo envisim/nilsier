@@ -11,7 +11,7 @@
 // program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Design-based estimators and variance estimators for National Inventories of Landscapes in
-//! Sweden (NILS)
+//! Sweden (NILS).
 
 pub mod category;
 pub mod psu;
@@ -60,7 +60,7 @@ use crate::tract::{
     TractStore,
 };
 
-/// Strategy used in the estimation of the covariance
+/// Strategy used in the estimation of the covariance.
 #[non_exhaustive]
 #[must_use]
 #[derive(Debug, Copy, Clone)]
@@ -70,7 +70,7 @@ pub enum CovarianceStrategy {
     /// Uses the nearest neighbours variance estimation.
     NearestNeighbours,
 }
-/// Contains information of covariance between category id-pairs
+/// Contains information of covariance between category id-pairs.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct CovarianceMatrix<CID> {
@@ -78,11 +78,11 @@ pub struct CovarianceMatrix<CID> {
     cov_mat: FxHashMap<CatIdPair<CID>, f64>,
     /// Number of categories. `cov_mat` should be of length `n_cats * (n_cats + 1) / 2`.
     n_cats: NonZeroUsize,
-    /// Covariance estimation strategy
+    /// Covariance estimation strategy.
     estimation_strategy: CovarianceStrategy,
 }
 impl<CID> CovarianceMatrix<CID> {
-    /// Constructs a new covariance storage from `psu_store`
+    /// Constructs a new covariance storage from `psu_store`.
     #[inline]
     fn from_psustore<PID>(psu_store: &PsuStore<PID, CID>) -> Self
     where
@@ -110,10 +110,10 @@ impl<CID> CovarianceMatrix<CID> {
             estimation_strategy: CovarianceStrategy::SimpleRandomSample,
         }
     }
-    /// Returns the estimation strategy
+    /// Returns the estimation strategy.
     #[inline]
     pub fn estimation_strategy(&self) -> CovarianceStrategy { self.estimation_strategy }
-    /// Sets the estimation strategy
+    /// Sets the estimation strategy.
     #[inline]
     fn set_estimation_strategy(&mut self, strategy: CovarianceStrategy) {
         self.estimation_strategy = strategy;
@@ -152,7 +152,7 @@ impl<CID> CovarianceMatrix<CID> {
             .get_mut(&cat_pair.into())
             .expect("cat_pair to exist") = cov;
     }
-    /// Adds to a covariance element
+    /// Adds to a covariance element.
     /// # Panics
     /// Panics if `cat_pair` does not exist.
     #[inline]
@@ -166,7 +166,7 @@ impl<CID> CovarianceMatrix<CID> {
             .get_mut(&cat_pair.into())
             .expect("cat_pair to exist") += cov;
     }
-    /// Returns the variance, i.e. the sum of the covariance matrix
+    /// Returns the variance, i.e. the sum of the covariance matrix.
     #[must_use]
     #[inline]
     pub fn variance(&self) -> f64
@@ -241,17 +241,17 @@ where
 
 #[must_use]
 #[derive(Clone, Copy, Default, Debug)]
-/// Contains an estimate for a category
+/// Contains an estimate for a category.
 pub struct CategorySum {
-    /// Sum
+    /// Sum.
     pub sum: f64,
-    /// Number of tracts which have positive measurements for this category
+    /// Number of tracts which have positive measurements for this category.
     pub positive_tracts: u64,
-    /// Number of tracts which have non zero measurements for this category
+    /// Number of tracts which have non zero measurements for this category.
     pub non_zero_tracts: u64,
 }
 impl CategorySum {
-    /// Constructs a new `CategorySum`
+    /// Constructs a new `CategorySum`.
     #[inline]
     pub fn new(sum: f64) -> Self {
         Self {
@@ -273,7 +273,7 @@ pub struct CategorySums<CID> {
     pub non_zero_tracts: u64,
 }
 impl<CID> CategorySums<CID> {
-    /// Constructs a new, empty, epc-store
+    /// Constructs a new, empty, epc-store.
     #[inline]
     pub fn new<PID>(psus: &PsuStore<PID, CID>) -> Self
     where
@@ -289,7 +289,7 @@ impl<CID> CategorySums<CID> {
             non_zero_tracts: 0,
         }
     }
-    /// Constructs a new, empty, epc-store, with some capacity
+    /// Constructs a new, empty, epc-store, with some capacity.
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -298,7 +298,7 @@ impl<CID> CategorySums<CID> {
             non_zero_tracts: 0,
         }
     }
-    /// Get the value of a category, if it exists and has non-zero entries
+    /// Get the value of a category, if it exists and has non-zero entries.
     #[must_use]
     #[inline]
     pub fn get_sum_nz(&self, cat_id: &CID) -> Option<f64>
@@ -308,11 +308,11 @@ impl<CID> CategorySums<CID> {
         let cs = self.categories.get(cat_id)?;
         (cs.non_zero_tracts > 0).then_some(cs.sum)
     }
-    /// Returns the estimate
+    /// Returns the estimate.
     #[must_use]
     #[inline]
     pub fn total(&self) -> f64 { self.categories.iter().map(|ct| ct.get().sum).sum() }
-    /// Running sum tracts
+    /// Running sum tracts.
     #[inline]
     fn sum_tracts_running<'btract, PID, TID, I>(&mut self, tracts: I)
     where
@@ -340,7 +340,7 @@ impl<CID> CategorySums<CID> {
             }
         }
     }
-    /// Sum tracts
+    /// Sum tracts.
     #[inline]
     fn sum_tracts<'btract, PID, TID, I>(&mut self, tracts: I)
     where
@@ -397,19 +397,27 @@ where
     }
 }
 
-/// A store of Nils PSUs and tracts
+/// A store of Nils PSUs and tracts.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct Nils<PID, CID, TID> {
-    /// PSUs
+    /// PSUs.
     psus: PsuStore<PID, CID>,
-    /// Tracts
+    /// Tracts.
     tracts: TractStore<TID, PID, CID>,
-    /// Frame area
+    /// Frame area.
     frame_area: Area,
-    /// Estimates
+    /// Estimates.
     estimates: CategorySums<CID>,
 }
+/// Deconstructioning tuple of `Nils`.
+pub type NilsParts<PID, CID, TID> = (
+    PsuStore<PID, CID>,
+    TractStore<TID, PID, CID>,
+    Area,
+    CategorySums<CID>,
+);
+
 impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// Initialise a `Nils` from with `psus` and `tracts` stores, and calculate estimates.
     /// # Errors
@@ -484,22 +492,15 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             estimates: epc,
         })
     }
-    /// Retrieve parts
+    /// Retrieve parts.
     #[inline]
-    pub fn into_parts(
-        self,
-    ) -> (
-        PsuStore<PID, CID>,
-        TractStore<TID, PID, CID>,
-        Area,
-        CategorySums<CID>,
-    ) {
+    pub fn into_parts(self) -> NilsParts<PID, CID, TID> {
         (self.psus, self.tracts, self.frame_area, self.estimates)
     }
-    /// Returns a reference to the estimates
+    /// Returns a reference to the estimates.
     #[inline]
     pub fn estimates(&self) -> &CategorySums<CID> { &self.estimates }
-    /// Sorts the `tract_ids` and constructs tract ranges over the psus
+    /// Sorts the `tract_ids` and constructs tract ranges over the psus.
     #[must_use]
     #[inline]
     fn tract_ranges(&self, tract_ids: &mut [TID]) -> Vec<(PID, Range<usize>)>
@@ -711,7 +712,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     }
     /// Returns an estimated covariance matrix using the nearest neighbour variance estimator.
     ///
-    /// Spreading matrix assumed to be in same order as insertion order of tracts
+    /// Spreading matrix assumed to be in same order as insertion order of tracts.
     /// # Errors
     /// Returns an error if the psus doesn't contain any categories, or if the `frame_area` is
     /// invalid.
@@ -852,22 +853,22 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     }
 }
 
-/// Tree-searcher utility
+/// Tree-searcher utility.
 #[must_use]
 struct Searcher<'bdata, P>
 where
     P: PointSet,
 {
-    /// The tree structure
+    /// The tree structure.
     tree: Tree<'bdata, P>,
-    /// The searcher
+    /// The searcher.
     searcher: KNearestNeighbourSearcher<P>,
 }
 impl<'bdata, P, TID> Searcher<'bdata, P>
 where
     P: PointSet<Id = TID>,
 {
-    /// Constructs a new tree-searcher
+    /// Constructs a new tree-searcher.
     /// # Panics
     /// Panic implies that `nn_size` is too low (1).
     #[inline]
@@ -884,7 +885,7 @@ where
         );
         Ok(Self { tree, searcher })
     }
-    /// Removes units from the tree
+    /// Removes units from the tree.
     #[inline]
     fn remove_units(&mut self, ids: &[TID])
     where
@@ -896,7 +897,7 @@ where
                 .expect("tract_id to exist in data");
         }
     }
-    /// Inserts units into the tree
+    /// Inserts units into the tree.
     #[inline]
     fn insert_units(&mut self, ids: &[TID])
     where
@@ -923,7 +924,8 @@ where
     }
     /// Searches for the `nn_size - 1` nearest neighbours to `tract_id`.
     /// # Panics
-    /// Panics if the `tract_id` cannot be found in the tree data (BUG), or if no neighbours can be found
+    /// Panics if the `tract_id` cannot be found in the tree data (BUG), or if no neighbours can be
+    /// found.
     #[inline]
     fn search(&mut self, tract_id: &TID)
     where
@@ -935,7 +937,7 @@ where
             .search(&self.tree)
             .expect("");
     }
-    /// Returns an iterator of the nearest neighbours to the search unit
+    /// Returns an iterator of the nearest neighbours to the search unit.
     #[inline]
     fn neighbours<'bitem>(&'bitem self) -> impl Iterator<Item = &'bitem TID>
     where
@@ -943,7 +945,7 @@ where
     {
         self.searcher.neighbours().iter().map(Neighbour::id)
     }
-    /// Returs
+    /// Returns an iterator over the tract neighbours.
     #[inline]
     fn neighbour_tracts<'bitem, PID, CID>(
         &'bitem self,

@@ -18,12 +18,12 @@ use std::mem::replace;
 
 use envisim_utils::utils::Number;
 
-/// An ordered pair of category IDs
+/// An ordered pair of category IDs.
 #[must_use]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CatIdPair<CID>(CID, CID);
 impl<CID> CatIdPair<CID> {
-    /// Constructs a new category pair
+    /// Constructs a new category pair.
     #[inline]
     pub fn new(cat_a: CID, cat_b: CID) -> Self
     where
@@ -35,13 +35,13 @@ impl<CID> CatIdPair<CID> {
             Self(cat_a, cat_b)
         }
     }
-    /// Returns the first member of the pair
+    /// Returns the first member of the pair.
     #[inline]
     pub fn get_a(&self) -> &CID { &self.0 }
-    /// Returns the second member of the pair
+    /// Returns the second member of the pair.
     #[inline]
     pub fn get_b(&self) -> &CID { &self.1 }
-    /// Returns true if the members are equal
+    /// Returns true if the members are equal.
     #[inline]
     pub fn is_same(&self) -> bool
     where
@@ -49,7 +49,7 @@ impl<CID> CatIdPair<CID> {
     {
         self.0 == self.1
     }
-    /// Deconstructs the pair and returns the inner categories
+    /// Deconstructs the pair and returns the inner categories.
     #[inline]
     pub fn into_inner(self) -> (CID, CID) { (self.0, self.1) }
 }
@@ -68,17 +68,17 @@ where
     fn from((cat_a, cat_b): (&CID, &CID)) -> Self { Self::new(*cat_a, *cat_b) }
 }
 
-/// PSU of first occurance, i.e. at which sample the category starts to be inventoried
+/// PSU of first occurance, i.e. at which sample the category starts to be inventoried.
 #[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct CategoryValue<CID, VAL> {
-    /// Category (key)
+    /// Category (key).
     cat_id: CID,
-    /// Value
+    /// Value.
     value: VAL,
 }
 impl<CID, VAL> CategoryValue<CID, VAL> {
-    /// Constructs a new container
+    /// Constructs a new container.
     #[inline]
     pub fn new(cat_id: CID, value: Option<VAL>) -> Self
     where
@@ -89,18 +89,18 @@ impl<CID, VAL> CategoryValue<CID, VAL> {
             value: value.unwrap_or_default(),
         }
     }
-    /// Returns the category id
+    /// Returns the category id.
     #[inline]
     pub fn cat_id(&self) -> &CID { &self.cat_id }
-    /// Reurns the value
+    /// Reurns the value.
     #[must_use]
     #[inline]
     pub fn get(&self) -> &VAL { &self.value }
-    /// Returns a mutable reference to the value
+    /// Returns a mutable reference to the value.
     #[must_use]
     #[inline]
     pub fn get_mut(&mut self) -> &mut VAL { &mut self.value }
-    /// Returns `true` if the value is 0.0
+    /// Returns `true` if the value is 0.0.
     #[must_use]
     #[inline]
     fn is_nil(&self) -> bool
@@ -147,29 +147,29 @@ where
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
-/// Stores multiple categories in category-order
+/// Stores multiple categories in category-order.
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct CategoryStore<CID, VAL> {
-    /// Store
+    /// Store.
     store: Vec<CategoryValue<CID, VAL>>,
 }
 impl<CID, VAL> CategoryStore<CID, VAL> {
-    /// Constructs a new, empty, store
+    /// Constructs a new, empty, store.
     #[inline]
     pub fn new() -> Self {
         Self {
             store: Vec::default(),
         }
     }
-    /// Constructs a new, empty, store, with some capacity
+    /// Constructs a new, empty, store, with some capacity.
     #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             store: Vec::with_capacity(capacity),
         }
     }
-    /// Reset with categories
+    /// Reset with categories.
     #[inline]
     pub fn initialize<'bitem, I>(&mut self, categories: I)
     where
@@ -182,9 +182,9 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
             self.insert((*cat, None));
         }
     }
-    /// Returns the index of a category
+    /// Returns the index of a category.
     /// # Errors
-    /// Returns an error if the category does not exist
+    /// Returns an error if the category does not exist.
     #[inline]
     fn index_of_category(&self, cat_id: &CID) -> Option<usize>
     where
@@ -260,10 +260,10 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
         self.index_of_category(cat_id)
             .map(|idx| self.store.remove(idx))
     }
-    /// Clears the store
+    /// Clears the store.
     #[inline]
     pub fn clear(&mut self) { self.store.clear() }
-    /// Resets all categories to zero
+    /// Resets all categories to zero.
     #[inline]
     pub fn reset_to_default(&mut self)
     where
@@ -273,27 +273,27 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
             *ct.get_mut() = VAL::default();
         }
     }
-    /// Returns an iterator over the store
+    /// Returns an iterator over the store.
     #[must_use]
     #[inline]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &CategoryValue<CID, VAL>> + Clone {
         self.store.iter()
     }
-    /// Returns a mutable iterator over the store
+    /// Returns a mutable iterator over the store.
     #[must_use]
     #[inline]
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item = &mut CategoryValue<CID, VAL>> {
         self.store.iter_mut()
     }
-    /// Returns the number of pairs in the store
+    /// Returns the number of pairs in the store.
     #[must_use]
     #[inline]
     pub fn len(&self) -> usize { self.store.len() }
-    /// Returns `true` if the store is empty
+    /// Returns `true` if the store is empty.
     #[must_use]
     #[inline]
     pub fn is_empty(&self) -> bool { self.store.is_empty() }
-    /// Returns the sum of the values in the sore
+    /// Returns the sum of the values in the sore.
     #[must_use]
     #[inline]
     pub fn sum(&self) -> VAL
@@ -302,7 +302,7 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     {
         self.store.iter().map(|cv| cv.value).sum()
     }
-    /// Returns `true` if all pairs are nil
+    /// Returns `true` if all pairs are nil.
     #[must_use]
     #[inline]
     pub fn is_nil(&self) -> bool

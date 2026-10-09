@@ -13,7 +13,8 @@
 #' (`tracts`), PSU hierarchy (`psus`), and category assignments (`categories`) to estimate totals
 #' under the NILS sampling design.
 #'
-#' @inheritSection nils Variance estimation strategy
+#' ## Variance estimation strategy
+#' See [`nilsier`].
 #'
 #' @returns A `nilsier` object, essentially a data frame with one row per category and the
 #' following columns:
@@ -136,7 +137,8 @@ nilsier_ratio = function(
 #' (`tracts`), PSU hierarchy (`psus`), and category assignments (`categories`) to estimate totals
 #' under the NILS sampling design.
 #'
-#' @inheritSection nils Variance estimation strategy
+#' ## Variance estimation strategy
+#' See [`nilsier`].
 #'
 #' @returns A `nilsier` object, essentially a data frame with one row per category and the
 #' following columns:
