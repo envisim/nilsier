@@ -10,17 +10,22 @@
 // You should have received a copy of the GNU Affero General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Savvy-R-wrappers for [`nilsier`]
+//! Savvy-R-wrappers for [`nilsier`].
 
 #![expect(clippy::wildcard_imports, reason = "need everything")]
 
 mod sexp;
+mod spreading_data;
+mod tract_id;
 
 use std::num::NonZeroU32;
 
 use envisim_utils::matrix::Dimensions;
 use envisim_utils::sampling_options::SpreadingOptions;
-use envisim_utils::utils::SliceView;
+use envisim_utils::utils::{
+    DataView,
+    SliceView,
+};
 use nilsier::psu::{
     PsuHeader,
     PsuStore,
@@ -32,9 +37,9 @@ use nilsier::tract::{
 };
 use nilsier::{
     Area,
+    CategorySums,
     CovarianceMatrix,
     CovarianceStrategy,
-    EstimatePerCategory,
     Nils,
 };
 use num_traits::ToPrimitive;
@@ -53,161 +58,18 @@ use crate::sexp::*;
 use crate::spreading_data::*;
 use crate::tract_id::*;
 
-mod tract_id {
-    //! Tract id module
-
-    use std::cmp::Ordering;
-    use std::fmt::{
-        Display,
-        Formatter,
-        Result as fmtResult,
-    };
-    use std::hash::{
-        Hash,
-        Hasher,
-    };
-
-    use crate::sexp::*;
-
-    /// Id pair
-    #[derive(Copy, Clone, Debug)]
-    pub struct TractId {
-        /// Internal id (order)
-        internal: usize,
-        /// Id given by user
-        id: i32,
-    }
-    impl TractId {
-        /// Return the internal id order
-        #[inline]
-        pub fn internal(&self) -> usize { self.internal }
-        /// Return the id
-        #[expect(dead_code, reason = "accessor")]
-        #[inline]
-        pub fn id(&self) -> i32 { self.id }
-        /// Constructs an iterator from an `sexp` of ids
-        #[inline]
-        pub fn from_sexp(
-            sexp: &IntegerSexpFatPtr,
-        ) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + Clone + use<'_> {
-            sexp.iter().copied().enumerate().map(Into::into)
-        }
-    }
-    impl From<(usize, i32)> for TractId {
-        #[inline]
-        fn from((internal, id): (usize, i32)) -> Self { Self { internal, id } }
-    }
-    impl Eq for TractId {}
-    impl PartialEq for TractId {
-        #[inline]
-        fn eq(&self, other: &Self) -> bool { self.id == other.id }
-    }
-    impl Ord for TractId {
-        #[inline]
-        fn cmp(&self, other: &Self) -> Ordering { self.id.cmp(&other.id) }
-    }
-    impl PartialOrd for TractId {
-        #[inline]
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
-    }
-    impl Hash for TractId {
-        #[inline]
-        fn hash<H>(&self, state: &mut H)
-        where
-            H: Hasher,
-        {
-            self.id.hash(state);
-        }
-    }
-    impl Display for TractId {
-        #[inline]
-        fn fmt(&self, f: &mut Formatter) -> fmtResult {
-            write!(f, "TractId{{ id: {}, ord: {} }}", self.id, self.internal)
-        }
-    }
-}
-
-mod spreading_data {
-    //! Spreading data module
-
-    use std::num::NonZeroUsize;
-
-    use envisim_utils::matrix::Dimensions;
-    use envisim_utils::utils::PointSet;
-
-    use super::TractList;
-    use crate::sexp::*;
-    use crate::tract_id::*;
-
-    /// Struct mapping matrix with ids
-    #[must_use]
-    pub struct SpreadingData {
-        /// ids
-        ids: IntegerSexpFatPtr,
-        /// data in matrix form
-        data: RMatrix,
-    }
-    impl SpreadingData {
-        /// Constructs new
-        #[inline]
-        pub fn new(list: TractList) -> Option<Self> {
-            list.auxiliaries.map(|data| Self {
-                ids: list.tracts,
-                data,
-            })
-        }
-        /// Returns an iterator over the ids
-        #[inline]
-        pub fn id_iter(&self) -> impl ExactSizeIterator<Item = TractId> + Clone + use<'_> {
-            TractId::from_sexp(&self.ids)
-        }
-        /// Returns true if `id` exists in the collection
-        #[inline]
-        pub fn contains(&self, id: TractId) -> bool { id.internal() < self.ids.len() }
-    }
-
-    impl PointSet for SpreadingData {
-        type Value = f64;
-        type Id = TractId;
-        #[inline]
-        fn len(&self) -> NonZeroUsize { self.data.nrow() }
-        #[inline]
-        fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + Clone { self.id_iter() }
-        #[inline]
-        fn dimensions(&self) -> NonZeroUsize { self.data.ncol() }
-        #[inline]
-        fn contains(&self, id: Self::Id) -> bool { self.contains(id) }
-        #[inline]
-        fn coord(&self, id: Self::Id, dim: usize) -> Option<&Self::Value> {
-            self.data.coord(id.internal(), dim)
-        }
-        #[inline]
-        unsafe fn coord_unchecked(&self, id: Self::Id, dim: usize) -> &Self::Value {
-            self.data.coord_unchecked(id.internal(), dim)
-        }
-        #[inline]
-        fn coords(
-            &self,
-            id: Self::Id,
-        ) -> Option<impl ExactSizeIterator<Item = &Self::Value> + DoubleEndedIterator + Clone>
-        {
-            self.data.coords(id.internal())
-        }
-    }
-}
-
-/// `ListSexp` representation of Psus
+/// `ListSexp` representation of Psus.
 #[must_use]
 struct PsuList {
-    /// psu ids
+    /// PSU IDs.
     psus: IntegerSexpFatPtr,
-    /// sizes
+    /// Sizes.
     sizes: IntegerSexpFatPtr,
-    /// supplied nearest neighbour sizes
+    /// Supplied nearest neighbour sizes.
     nn_sizes: Option<IntegerSexpFatPtr>,
 }
 impl PsuList {
-    /// Extract from `list`
+    /// Extract from `list`.
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let ids: IntegerSexpFatPtr = list
@@ -241,14 +103,13 @@ impl PsuList {
             nn_sizes,
         })
     }
-    /// Construct new `PsuStore`
-    #[expect(clippy::needless_pass_by_value, reason = "no use for categories after")]
+    /// Construct new `PsuStore`.
     #[inline]
-    fn as_psu_store(&self, categories: CategoryList) -> savvy::Result<PsuStore<i32, i32>> {
+    fn as_psu_store(&self, categories: &CategoryList) -> savvy::Result<PsuStore<i32, i32>> {
         let headers: Vec<PsuHeader<i32>> = self
             .psus
-            .iter()
-            .zip(self.sizes.iter())
+            .values()
+            .zip(self.sizes.values())
             .map(|(id, size)| {
                 let v = size.to_u32().and_then(NonZeroU32::new)?;
                 Some(PsuHeader::new(*id, v))
@@ -258,7 +119,7 @@ impl PsuList {
 
         let nn_sizes = match &self.nn_sizes {
             Some(nn) => nn
-                .iter()
+                .values()
                 .map(|n| n.to_u32().and_then(NonZeroU32::new))
                 .collect::<Option<Vec<NonZeroU32>>>()
                 .ok_or(savvy_err!("nn_sizes must be positive"))?
@@ -267,10 +128,10 @@ impl PsuList {
             None => None,
         };
 
-        let mut store = PsuStore::new(headers.into_iter(), nn_sizes)?;
+        let mut store = PsuStore::new(headers, nn_sizes)?;
 
         // add categories
-        for (cat, psu) in categories.categories.iter().zip(categories.psus.iter()) {
+        for (cat, psu) in categories.categories.values().zip(categories.psus.values()) {
             store.insert_category(psu, *cat)?;
         }
 
@@ -278,16 +139,16 @@ impl PsuList {
     }
 }
 
-/// `ListSexp` representation of categories
+/// `ListSexp` representation of categories.
 #[must_use]
 struct CategoryList {
-    /// category ids
+    /// category ids.
     categories: IntegerSexpFatPtr,
-    /// psu ids
+    /// psu ids.
     psus: IntegerSexpFatPtr,
 }
 impl CategoryList {
-    /// Extract from `list`
+    /// Extract from `list`.
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let categories: IntegerSexpFatPtr = list
@@ -307,18 +168,18 @@ impl CategoryList {
     }
 }
 
-/// `ListSexp` representation of Tracts
+/// `ListSexp` representation of Tracts.
 #[must_use]
 struct TractList {
-    /// tract ids
+    /// tract ids.
     tracts: IntegerSexpFatPtr,
-    /// psu ids
+    /// psu ids.
     psus: IntegerSexpFatPtr,
-    /// auxiliary information
+    /// auxiliary information.
     auxiliaries: Option<RMatrix>,
 }
 impl TractList {
-    /// Extract from `list`
+    /// Extract from `list`.
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let tracts: IntegerSexpFatPtr = list
@@ -353,15 +214,14 @@ impl TractList {
             auxiliaries,
         })
     }
-    /// Construct a `TractStore`
-    #[expect(clippy::needless_pass_by_value, reason = "no use for entries after")]
+    /// Construct a `TractStore`.
     #[inline]
     fn as_tract_store(&self, tract_area: Area) -> savvy::Result<TractStore<TractId, i32, i32>> {
         // Prep store
         let mut store = TractStore::with_capacity(self.tracts.len(), tract_area);
 
         for tract in TractId::from_sexp(&self.tracts)
-            .zip(self.psus.iter())
+            .zip(self.psus.values())
             .map(|(tract, psu)| Tract::new(tract, *psu))
         {
             store.insert(tract)?;
@@ -371,19 +231,19 @@ impl TractList {
     }
 }
 
-/// `ListSexp` representation of tract entries
+/// `ListSexp` representation of tract entries.
 struct TractEntryList {
-    /// tract ids
+    /// tract ids.
     tracts: IntegerSexpFatPtr,
-    /// category ids
+    /// category ids.
     categories: IntegerSexpFatPtr,
-    /// design weights
+    /// design weights.
     dws: RealSexpFatPtr,
-    /// values
+    /// values.
     values: RealSexpFatPtr,
 }
 impl TractEntryList {
-    /// Extract from `list`
+    /// Extract from `list`.
     #[inline]
     fn from_list(list: &ListSexp) -> savvy::Result<Self> {
         let tract_ids: IntegerSexpFatPtr = list
@@ -418,35 +278,38 @@ impl TractEntryList {
             values: value_vec,
         })
     }
-    /// Add entries to tract store
+    /// Add entries to tract store.
     #[inline]
-    fn add_entries_to_store<PID>(&self, store: &mut TractStore<TractId, PID, i32>) {
+    fn add_entries_to_store<PID>(
+        &self,
+        store: &mut TractStore<TractId, PID, i32>,
+    ) -> savvy::Result<()> {
         // Add entries
-        let cats = entries.categories.data();
-        let dws = entries.dws.data();
-        let values = entries.values.data();
+        let cats = self.categories.slice();
+        let dws = self.dws.slice();
+        let values = self.values.slice();
 
-        for (i, tract) in entries.tracts.iter().enumerate() {
+        for (i, tract) in self.tracts.entries() {
             // Hacky as tract value entry doesnt need the internal part of the tract id
             let tid = TractId::from((0_usize, *tract));
             let entry = TractValueEntry::new(tid, cats[i], dws[i], values[i])?;
-            store.add_value_from_entry(entry)?;
+            store.add_value_from_entry(&entry)?;
         }
 
-        Ok(store)
+        Ok(())
     }
 }
 
-/// Constructs an `OwnedListSexp` from `estimates` and `covariances`
+/// Constructs an `OwnedListSexp` from `estimates` and `covariances`.
+/// Sets the first 7 slots of `list`.
 #[inline]
 fn as_result_list(
-    estimates: &EstimatePerCategory<i32>,
+    mut list: OwnedListSexp,
+    estimates: &CategorySums<i32>,
     covariances: &CovarianceMatrix<i32>,
 ) -> savvy::Result<OwnedListSexp> {
-    let mut list = OwnedListSexp::new(7, true)?;
-
     // Set estimate
-    let sexp_estimate = OwnedRealSexp::try_from_scalar(estimates.estimate())?;
+    let sexp_estimate = OwnedRealSexp::try_from_scalar(estimates.total())?;
     list.set_name_and_value(0, "estimate", sexp_estimate)?;
 
     // Set variance estimate
@@ -455,7 +318,7 @@ fn as_result_list(
 
     // Set estimates per category
     let sexp_category_estimates =
-        OwnedRealSexp::try_from_iter(estimates.estimate_per_category.iter().map(|v| *v.get()))?;
+        OwnedRealSexp::try_from_iter(estimates.categories.iter().map(|v| v.get().sum))?;
     list.set_name_and_value(2, "category_estimates", sexp_category_estimates)?;
 
     // Set covariance matrix
@@ -472,7 +335,7 @@ fn as_result_list(
             .to_i32()
             .ok_or_else(|| savvy_err!("covmat.ncol cannot be converted to i32"))?,
     ];
-    let mut sexp_category_covariances = OwnedRealSexp::try_from_slice(cov_mat.data().data())?;
+    let mut sexp_category_covariances = OwnedRealSexp::try_from_slice(cov_mat.data())?;
     sexp_category_covariances.set_dim(&cov_mat_dim)?;
     list.set_name_and_value(3, "category_covariances", sexp_category_covariances)?;
 
@@ -486,9 +349,9 @@ fn as_result_list(
 
     // Set number of positive tracts per category
     let positive_tracts_per_category = estimates
-        .positive_tracts_per_category
+        .categories
         .iter()
-        .map(|v| v.get().to_i32())
+        .map(|v| v.get().positive_tracts.to_i32())
         .collect::<Option<Vec<i32>>>()
         .ok_or_else(|| savvy_err!("positive tracts per category cannot be converted to i32"))?;
     let sexp_positive_tracts_per_category =
@@ -515,7 +378,7 @@ fn as_result_list(
     Ok(list)
 }
 
-/// Estimates according to NILS design
+/// Estimates according to NILS design.
 ///
 /// @keywords internal
 /// @noRd
@@ -536,9 +399,9 @@ fn rust_nils_estimate(
 
     // Construct PSU store
     let psu_store = {
-        let psus = PsuList::from_list(&psus)?;
+        let store = PsuList::from_list(&psus)?;
         let categories = CategoryList::from_list(&categories)?;
-        psus.as_psu_store(categories)?
+        store.as_psu_store(&categories)?
     };
     let tract_store = {
         let mut store = tracts.as_tract_store(tract_area)?;
@@ -548,28 +411,25 @@ fn rust_nils_estimate(
     };
     let nils = Nils::new(psu_store, tract_store, frame_area)?;
 
-    // Estimate per category
-    let estimates = nils.estimate_per_category();
-
     // Covariance matrix
     let covariances = match (variance_strategy, SpreadingData::new(tracts)) {
         ("nearest_neighbours", Some(sd)) => {
             let so = SpreadingOptions::new(sd).set_bucket_size(30)?;
-            nils.covariance_estimate_nn(&estimates, &so)?
+            nils.covariance_estimate_nn(&so)?
         }
-        _ => nils.covariance_estimate(&estimates)?,
+        _ => nils.covariance_estimate()?,
     };
 
-    let list = as_result_list(&estimates, &covariances)?;
+    let list = as_result_list(OwnedListSexp::new(7, true)?, nils.estimates(), &covariances)?;
     list.into()
 }
 
-/// Ratio estimates according to NILS design
+/// Estimate a ratio according to NILS design.
 ///
 /// @keywords internal
 /// @noRd
 #[savvy]
-fn rust_nils_ratio_estimate(
+fn rust_nils_estimate_ratio(
     psus: ListSexp,
     categories: ListSexp,
     tracts: ListSexp,
@@ -582,40 +442,71 @@ fn rust_nils_ratio_estimate(
     // Prep data
     let frame_area = Area::new(frame_area).ok_or(savvy_err!("frame area must be positive"))?;
     let tract_area = Area::new(tract_area).ok_or(savvy_err!("tract area must be positive"))?;
-    let psus = PsuList::from_list(&psus)?;
-    let categories = CategoryList::from_list(&categories)?;
     let tracts = TractList::from_list(&tracts)?;
-    let values = TractEntryList::from_list(&values)?;
+    let tract_store_base = tracts.as_tract_store(tract_area)?;
 
-    // Construct PSU store
-    let psu_store_y = {
-        let psus = PsuList::from_list(&psus)?;
+    let psu_store = {
+        let store = PsuList::from_list(&psus)?;
         let categories = CategoryList::from_list(&categories)?;
-        psus.as_psu_store(categories)?
+        store.as_psu_store(&categories)?
     };
-    let psu_store_z = psu_store_1.clone();
-    let mut tract_store_x = tracts.as_tract_store(tract_area)?;
-    let mut tract_store_z = {};
-    let tract_store = {
-        let values = TractEntryList::from_list(&values)?;
-        values.add_entries_to_store(&mut store)?;
-        store
-    };
-    let tract_store_1 = tracts.as_tract_store(values, tract_area)?;
-    let nils = Nils::new(psu_store, tract_store, frame_area)?;
 
-    // Estimate per category
-    let estimates = nils.estimate_per_category();
+    // Estimate y's
+    let (psu_store, mut tract_store_y, _, estimates_y) = {
+        let tract_store = {
+            let mut store = tract_store_base.clone(); // Clone base instead of re-creating
+            let values = TractEntryList::from_list(&values_y)?;
+            values.add_entries_to_store(&mut store)?;
+            store
+        };
+        Nils::new(psu_store, tract_store, frame_area)?.into_parts()
+    };
+
+    // Estimate z's
+    let (psu_store, tract_store_z, _, estimates_z) = {
+        let tract_store = {
+            let mut store = tract_store_base; // Use base instead of re-creating
+            let values = TractEntryList::from_list(&values_z)?;
+            values.add_entries_to_store(&mut store)?;
+            store
+        };
+        Nils::new(psu_store, tract_store, frame_area)?.into_parts()
+    };
+
+    // Change estimates_y to be estimates_r by dividing with _z
+    let totals = (estimates_y.total(), estimates_z.total());
+    let mut ratio = totals.0 / totals.1;
+    let mut estimates_r = estimates_y.clone();
+    for cat in estimates_r.categories.iter_mut() {
+        let cid = cat.cat_id();
+        cat.get_mut().sum /= totals.1;
+    }
+
+    // Change tract_store_y to be tract_store_r by doing y - R z for every non-zero z
+    for tract in tract_store_z.iter() {
+        let tid = *tract.tract_id();
+
+        for cat in tract.totals().iter() {
+            let cid = cat.cat_id();
+            let zr = cat.get() * estimates_r.get_sum_nz(cid).unwrap_or(0.0);
+            let entry = TractValueEntry::new(tid, *cid, 1.0, -zr)?; // Subtract zr
+            tract_store_y.add_value_from_entry(&entry)?;
+        }
+    }
+
+    let nils = Nils::new(psu_store, tract_store_y, frame_area)?;
 
     // Covariance matrix
     let covariances = match (variance_strategy, SpreadingData::new(tracts)) {
         ("nearest_neighbours", Some(sd)) => {
             let so = SpreadingOptions::new(sd).set_bucket_size(30)?;
-            nils.covariance_estimate_nn(&estimates, &so)?
+            nils.covariance_estimate_nn(&so)?
         }
-        _ => nils.covariance_estimate(&estimates)?,
+        _ => nils.covariance_estimate()?,
     };
 
-    let list = as_result_list(&estimates, &covariances)?;
+    let mut list = as_result_list(OwnedListSexp::new(7, true)?, &estimates_r, &covariances)?;
+    let sexp_totals = OwnedRealSexp::try_from_slice(&[totals.0, totals.1])?;
+    list.set_name_and_value(7, "total_estimates", sexp_totals)?;
     list.into()
 }

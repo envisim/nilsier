@@ -10,17 +10,19 @@
 // You should have received a copy of the GNU Affero General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Matrix utils
+//! Matrix utils.
 
 #![expect(dead_code, reason = "not all impl uses every method")]
 
-use std::slice::{
-    Iter,
-    from_raw_parts,
-};
+use std::slice::from_raw_parts;
 
 use envisim_utils::matrix::MatrixBase;
-use envisim_utils::utils::SliceView;
+use envisim_utils::utils::{
+    ConstructableDataView,
+    ContiguousDataView,
+    DataView,
+    SliceView,
+};
 use num_traits::ToPrimitive;
 use savvy::{
     IntegerSexp,
@@ -33,23 +35,23 @@ use savvy_ffi::{
     REAL,
 };
 
-/// Constructs a new fat ptr variant of a `Sexp` variant
+/// Constructs a new fat ptr variant of a `Sexp` variant.
 macro_rules! impl_sexp_fat_ptr {
     ($name:ident, $sexp:ident, $data:ty, $access:ident) => {
-        /// Wrapper for `$sexp`
+        /// Wrapper for `$sexp`.
         #[must_use]
         pub struct $name {
-            /// Underlying reference to data
+            /// Underlying reference to data.
             #[expect(dead_code, reason = "structure should own data")]
             sexp: $sexp,
-            /// Pointer to data
+            /// Pointer to data.
             ptr: *const $data,
-            /// Length of data
+            /// Length of data.
             len: usize,
         }
 
         impl $name {
-            /// Constructs the fat pointer from a `$sexp`
+            /// Constructs the fat pointer from a `$sexp`.
             #[inline]
             pub fn from_sexp(sexp: $sexp) -> savvy::Result<Self> {
                 if sexp.is_empty() {
@@ -65,15 +67,6 @@ macro_rules! impl_sexp_fat_ptr {
                     sexp,
                 })
             }
-            /// Returns the number of elements of the sexp
-            #[inline]
-            pub fn len(&self) -> usize { self.len }
-            /// Returns true if the sexp is empty
-            #[inline]
-            pub fn is_empty(&self) -> bool { self.len == 0 }
-            /// Returns true if the sexp is empty
-            #[inline]
-            pub fn iter(&self) -> Iter<'_, $data> { self.data().iter() }
         }
 
         impl TryFrom<Sexp> for $name {
@@ -90,10 +83,29 @@ macro_rules! impl_sexp_fat_ptr {
             fn try_from(sexp: $sexp) -> Result<Self, Self::Error> { Self::from_sexp(sexp) }
         }
 
-        impl SliceView for $name {
-            type Elem = $data;
+        impl DataView for $name {
+            type Id = usize;
+            type Value = $data;
             #[inline]
-            fn data(&self) -> &[Self::Elem] {
+            fn ids(&self) -> impl ExactSizeIterator<Item = Self::Id> + Clone { 0..self.len }
+            #[inline]
+            fn values(&self) -> impl ExactSizeIterator<Item = &Self::Value> + Clone {
+                self.slice().iter()
+            }
+            #[inline]
+            fn entries(&self) -> impl ExactSizeIterator<Item = (Self::Id, &Self::Value)> + Clone {
+                self.slice().iter().enumerate()
+            }
+            #[inline]
+            fn contains(&self, id: Self::Id) -> bool { id < self.len }
+            #[inline]
+            fn get(&self, id: Self::Id) -> Option<&Self::Value> { self.slice().get(id) }
+            #[inline]
+            fn len(&self) -> usize { self.len }
+        }
+        impl SliceView for $name {
+            #[inline]
+            fn slice(&self) -> &[Self::Value] {
                 if self.len == 0 {
                     return &[];
                 }
@@ -103,13 +115,31 @@ macro_rules! impl_sexp_fat_ptr {
                 unsafe { from_raw_parts(self.ptr, self.len) }
             }
         }
+        impl ContiguousDataView for $name {}
+        impl ConstructableDataView for $name {
+            type ConstructableContainer<V> = Box<[V]>;
+            #[inline]
+            fn from_iter<I, V>(iter: I) -> Self::ConstructableContainer<V>
+            where
+                I: Iterator<Item = (Self::Id, V)>,
+            {
+                iter.map(|(_, v)| v).collect()
+            }
+            #[inline]
+            fn try_from_iter<I, V, E>(iter: I) -> Result<Self::ConstructableContainer<V>, E>
+            where
+                I: Iterator<Item = Result<(Self::Id, V), E>>,
+            {
+                iter.map(|r| r.map(|(_, v)| v)).collect()
+            }
+        }
     };
 }
 
 impl_sexp_fat_ptr!(RealSexpFatPtr, RealSexp, f64, REAL);
 impl_sexp_fat_ptr!(IntegerSexpFatPtr, IntegerSexp, i32, INTEGER);
 
-/// Constructs a `RMatrix` from `RealSexp`
+/// Constructs a `RMatrix` from `RealSexp`.
 #[inline]
 pub fn realsexp_to_matrix(sexp: RealSexp) -> savvy::Result<RMatrix> {
     let rows = match sexp

@@ -39,9 +39,15 @@ SEXP savvy_rust_nils_estimate__impl(SEXP c_arg__psus, SEXP c_arg__categories, SE
     return handle_result(res);
 }
 
+SEXP savvy_rust_nils_estimate_ratio__impl(SEXP c_arg__psus, SEXP c_arg__categories, SEXP c_arg__tracts, SEXP c_arg__values_y, SEXP c_arg__values_z, SEXP c_arg__frame_area, SEXP c_arg__tract_area, SEXP c_arg__variance_strategy) {
+    SEXP res = savvy_rust_nils_estimate_ratio__ffi(c_arg__psus, c_arg__categories, c_arg__tracts, c_arg__values_y, c_arg__values_z, c_arg__frame_area, c_arg__tract_area, c_arg__variance_strategy);
+    return handle_result(res);
+}
+
 
 static const R_CallMethodDef CallEntries[] = {
     {"savvy_rust_nils_estimate__impl", (DL_FUNC) &savvy_rust_nils_estimate__impl, 7},
+    {"savvy_rust_nils_estimate_ratio__impl", (DL_FUNC) &savvy_rust_nils_estimate_ratio__impl, 8},
     {NULL, NULL, 0}
 };
 

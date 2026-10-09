@@ -17,7 +17,6 @@ use std::iter::Sum;
 use std::mem::replace;
 
 use envisim_utils::utils::Number;
-use num_traits::ConstZero;
 
 /// An ordered pair of category IDs
 #[must_use]
@@ -79,15 +78,15 @@ pub struct CategoryValue<CID, VAL> {
     value: VAL,
 }
 impl<CID, VAL> CategoryValue<CID, VAL> {
-    /// Constructs a new container without value
+    /// Constructs a new container
     #[inline]
     pub fn new(cat_id: CID, value: Option<VAL>) -> Self
     where
-        VAL: ConstZero,
+        VAL: Default,
     {
         Self {
             cat_id,
-            value: value.unwrap_or(VAL::ZERO),
+            value: value.unwrap_or_default(),
         }
     }
     /// Returns the category id
@@ -108,27 +107,19 @@ impl<CID, VAL> CategoryValue<CID, VAL> {
     where
         VAL: Number,
     {
-        !self.value.is_pos_finite()
-    }
-    /// Adds to the value
-    #[inline]
-    pub fn add(&mut self, value: VAL)
-    where
-        VAL: Number,
-    {
-        self.value += value;
+        !self.value.is_finite() || self.value.is_zero()
     }
 }
 impl<CID, VAL> From<(CID, VAL)> for CategoryValue<CID, VAL>
 where
-    VAL: ConstZero,
+    VAL: Default,
 {
     #[inline]
     fn from((cat_id, value): (CID, VAL)) -> Self { Self::new(cat_id, Some(value)) }
 }
 impl<CID, VAL> From<(CID, Option<VAL>)> for CategoryValue<CID, VAL>
 where
-    VAL: ConstZero,
+    VAL: Default,
 {
     #[inline]
     fn from((cat_id, value): (CID, Option<VAL>)) -> Self { Self::new(cat_id, value) }
@@ -183,12 +174,12 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     pub fn initialize<'bitem, I>(&mut self, categories: I)
     where
         CID: Copy + Ord + 'bitem,
-        VAL: ConstZero,
+        VAL: Default,
         I: Iterator<Item = &'bitem CID>,
     {
         self.clear();
         for cat in categories {
-            self.insert((*cat, VAL::ZERO));
+            self.insert((*cat, None));
         }
     }
     /// Returns the index of a category
@@ -218,6 +209,26 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     {
         self.index_of_category(cat_id)
             .map(|idx| self.store[idx].get_mut())
+    }
+    /// Returns a mutable reference to the value of a category. Creates the category with default
+    /// value if it does not exist in the collection.
+    #[inline]
+    pub fn get_mut_or_default(&mut self, cat_id: &CID) -> &mut VAL
+    where
+        CID: Copy + Ord,
+        VAL: Default,
+    {
+        let idx = match self
+            .store
+            .binary_search_by_key(&cat_id, CategoryValue::cat_id)
+        {
+            Ok(idx) => idx,
+            Err(idx) => {
+                self.store.insert(idx, CategoryValue::new(*cat_id, None));
+                idx
+            }
+        };
+        self.store[idx].get_mut()
     }
     /// Inserts a category-value pair into the store.
     /// Returns `Some`, if a pair with the same category id already exists.
@@ -254,12 +265,12 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     pub fn clear(&mut self) { self.store.clear() }
     /// Resets all categories to zero
     #[inline]
-    pub fn reset_to_zero(&mut self)
+    pub fn reset_to_default(&mut self)
     where
-        VAL: ConstZero,
+        VAL: Default,
     {
         for ct in self.iter_mut() {
-            *ct.get_mut() = VAL::ZERO;
+            *ct.get_mut() = VAL::default();
         }
     }
     /// Returns an iterator over the store
@@ -282,37 +293,6 @@ impl<CID, VAL> CategoryStore<CID, VAL> {
     #[must_use]
     #[inline]
     pub fn is_empty(&self) -> bool { self.store.is_empty() }
-    /// Adds a value to a category, or inserts it if it already exists.
-    #[inline]
-    pub fn add_value<PAIR>(&mut self, pair: PAIR)
-    where
-        CID: Ord,
-        VAL: Number,
-        PAIR: Into<CategoryValue<CID, VAL>>,
-    {
-        let new = pair.into();
-        match self.store.binary_search(&new) {
-            Ok(idx) => {
-                self.store[idx].add(*new.get());
-            }
-            Err(idx) => {
-                self.store.insert(idx, new);
-            }
-        }
-    }
-    /// Adds a value to a category
-    #[inline]
-    pub fn add_existing_value<PAIR>(&mut self, pair: PAIR) -> Option<()>
-    where
-        CID: Ord,
-        VAL: Number,
-        PAIR: Into<CategoryValue<CID, VAL>>,
-    {
-        let new = pair.into();
-        let idx = self.store.binary_search(&new).ok()?;
-        self.store[idx].add(*new.get());
-        Some(())
-    }
     /// Returns the sum of the values in the sore
     #[must_use]
     #[inline]
@@ -339,7 +319,7 @@ impl<CID, VAL> Default for CategoryStore<CID, VAL> {
 impl<CID, VAL> FromIterator<CID> for CategoryStore<CID, VAL>
 where
     CID: Ord,
-    VAL: ConstZero,
+    VAL: Default,
 {
     #[inline]
     fn from_iter<T>(iter: T) -> Self
