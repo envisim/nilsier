@@ -488,7 +488,11 @@ fn rust_nils_estimate_ratio(
 
         for cat in tract.totals().iter() {
             let cid = cat.cat_id();
-            let zr = cat.get() * estimates_r.get_sum_nz(cid).unwrap_or(0.0);
+            // tract_z has already divided by area, must multiply so it's not done twice
+            let z_val = cat.get() * tract_area.get();
+            // let r_val = estimates_r.get_sum_nz(cid).unwrap_or(0.0);
+            let r_val = ratio;
+            let zr = z_val * r_val;
             let entry = TractValueEntry::new(tid, *cid, 1.0, -zr)?; // Subtract zr
             tract_store_y.add_value_from_entry(&entry)?;
         }
@@ -505,7 +509,7 @@ fn rust_nils_estimate_ratio(
         _ => nils.covariance_estimate()?,
     };
 
-    let mut list = as_result_list(OwnedListSexp::new(7, true)?, &estimates_r, &covariances)?;
+    let mut list = as_result_list(OwnedListSexp::new(8, true)?, &estimates_r, &covariances)?;
     let sexp_totals = OwnedRealSexp::try_from_slice(&[totals.0, totals.1])?;
     list.set_name_and_value(7, "total_estimates", sexp_totals)?;
     list.into()
