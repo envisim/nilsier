@@ -10,7 +10,7 @@
 // You should have received a copy of the GNU Affero General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Utilities
+//! Utilities.
 
 use std::fmt::{
     Display,
@@ -22,22 +22,22 @@ use std::ops::Deref;
 use envisim_utils::kd_tree::TreeError;
 use thiserror::Error;
 
-/// Nils errors
+/// Nils errors.
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum NilsError {
-    /// Categories must be added
+    /// Categories must be added.
     #[error("no categories have been added")]
     NoCategoriesAdded,
-    /// The supplied number of tracts does not match the prescribed number of tracts
+    /// The supplied number of tracts does not match the prescribed number of tracts.
     #[error("the supplied number of tracts {0} does not match the prescribed number of tracts {1}")]
     IncorrectNumberOfTracts(u32, u32),
-    /// See [`TreeError`]
+    /// See [`TreeError`].
     #[error(transparent)]
     Tree(#[from] TreeError),
 }
 
-/// An area representation
+/// An area representation.
 #[must_use]
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -47,13 +47,13 @@ impl Area {
     #[must_use]
     #[inline]
     fn check(area: f64) -> bool { area.is_finite() && area > 0.0 }
-    /// Constructs a new `Area` from `area`
+    /// Constructs a new `Area` from `area`.
     /// # Errors
     /// Returns an error if `area` is non-positive.
     #[must_use]
     #[inline]
     pub fn new(area: f64) -> Option<Self> { Self::check(area).then_some(Self(area)) }
-    /// Returns the area as a `f64`
+    /// Returns the area as a `f64`.
     #[must_use]
     #[inline]
     pub fn get(&self) -> f64 { self.0 }

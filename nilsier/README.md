@@ -5,8 +5,8 @@ NILS is an acronym for the National Inventories of Landscapes in Sweden, a group
 monitoring programs governed by the [Swedish University of Agricultural Sciences](https://slu.se/en)
 (SLU).
 
-[![crates.io](https://img.shields.io/crates/v/envisim_samplr.svg)](https://crates.io/crates/envisim_samplr)
-[![Documentation](https://docs.rs/envisim_samplr/badge.svg)](https://docs.rs/envisim_samplr)
+[![crates.io](https://img.shields.io/crates/v/envisim_samplr.svg)](https://crates.io/crates/nilsier)
+[![Documentation](https://docs.rs/envisim_samplr/badge.svg)](https://docs.rs/nilsier)
 
 
 ## Links

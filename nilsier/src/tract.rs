@@ -10,7 +10,7 @@
 // You should have received a copy of the GNU Affero General Public License along with this
 // program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Handling of tracts
+//! Handling of tracts.
 
 use std::borrow::Borrow;
 use std::collections::hash_map::Entry;
@@ -27,25 +27,25 @@ use thiserror::Error;
 use crate::category::CategoryStore;
 use crate::utils::Area;
 
-/// Tract errors
+/// Tract errors.
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum TractError {
-    /// Design weight must be positive
+    /// Design weight must be positive.
     #[error("Design weight ({0}) must be positive")]
     InvalidDesignWeight(f64),
-    /// Value must be non-negative
+    /// Value must be non-negative.
     #[error("Value ({0}) must be non-negative")]
     InvalidValue(f64),
-    /// ID not found
+    /// ID not found.
     #[error("Tract ID ({0}) not found")]
     IdNotFound(String),
-    /// ID collision
+    /// ID collision.
     #[error("Tract ID ({0}) collision")]
     IdCollision(String),
 }
 impl TractError {
-    /// Returns `IdNotFound` error for TID
+    /// Returns `IdNotFound` error for TID.
     #[must_use]
     #[inline]
     fn id_not_found<TID>(id: &TID) -> Self
@@ -54,7 +54,7 @@ impl TractError {
     {
         Self::IdNotFound(id.to_string())
     }
-    /// Returns `IdCollision` error for TID
+    /// Returns `IdCollision` error for TID.
     #[must_use]
     #[inline]
     fn id_collision<TID>(id: &TID) -> Self
@@ -73,17 +73,17 @@ impl From<Infallible> for TractError {
     fn from(_: Infallible) -> Self { unreachable!() }
 }
 
-/// Contains values from a tract
+/// Contains values from a tract.
 #[must_use]
 #[derive(Clone, Copy, Debug)]
 pub struct TractValueEntry<TID, CID> {
-    /// Tract ID
+    /// Tract ID.
     tract_id: TID,
-    /// Category ID
+    /// Category ID.
     cat_id: CID,
-    /// Design weight
+    /// Design weight.
     design_weight: f64,
-    /// Measured value
+    /// Measured value.
     value: f64,
 }
 impl<TID, CID> TractValueEntry<TID, CID> {
@@ -145,10 +145,10 @@ impl<TID, CID> TractValueEntry<TID, CID> {
     pub fn weighted_value(&self) -> f64 { self.value * self.design_weight }
     /// Sets the measured value.
     /// # Errors
-    /// Returns an error if `value` is negative.
+    /// Returns an error if `value` is not finite.
     #[inline]
     pub fn set_value(&mut self, value: f64) -> Result<(), TractError> {
-        if value.is_finite() && 0.0 <= value {
+        if value.is_finite() {
             self.value = value;
             Ok(())
         } else {
@@ -161,58 +161,61 @@ impl<TID, CID> Borrow<TID> for TractValueEntry<TID, CID> {
     fn borrow(&self) -> &TID { &self.tract_id }
 }
 
-/// A tract
+/// A tract.
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct Tract<TID, PID, CID> {
-    /// Tract identifier
-    tract_id: TID,
-    /// Smallest PSU that includes this tract
+    /// Tract identifier.
+    id: TID,
+    /// Smallest PSU that includes this tract.
     psu_id: PID,
-    /// Category totals
+    /// Category totals.
     totals: CategoryStore<CID, f64>,
 }
 impl<TID, PID, CID> Tract<TID, PID, CID> {
-    /// Constructs a new tract info container
+    /// Constructs a new tract info container.
     #[inline]
-    pub fn new(tract_id: TID, psu_id: PID) -> Self {
+    pub fn new(id: TID, psu_id: PID) -> Self {
         Self {
-            tract_id,
+            id,
             psu_id,
             totals: CategoryStore::new(),
         }
     }
     /// Returns the identifier of the tract.
     #[inline]
-    pub fn tract_id(&self) -> &TID { &self.tract_id }
+    pub fn tract_id(&self) -> &TID { &self.id }
     /// Returns the smallest PSU that includes this tract.
     #[inline]
     pub fn psu_id(&self) -> &PID { &self.psu_id }
     /// Returns the plot values of the tract.
     #[inline]
     pub fn totals(&self) -> &CategoryStore<CID, f64> { &self.totals }
-    /// Adds an entry to the tract
+    /// Adds an entry to the tract.
     #[inline]
-    pub fn add(&mut self, entry: TractValueEntry<TID, CID>, area: Area)
+    pub fn add(&mut self, entry: &TractValueEntry<TID, CID>, area: Area)
     where
-        CID: Ord,
+        CID: Copy + Ord,
     {
-        let value = entry.weighted_value() / area.get();
-        self.totals.add_value((entry.cat_id, value));
+        let weighted_value = entry.weighted_value();
+        if weighted_value != 0.0 {
+            let value = weighted_value / area.get();
+            *self.totals.get_mut_or_default(entry.cat_id()) += value;
+        }
     }
 }
 impl<TID, PID, CID> Borrow<TID> for Tract<TID, PID, CID> {
     #[inline]
-    fn borrow(&self) -> &TID { &self.tract_id }
+    fn borrow(&self) -> &TID { &self.id }
 }
 
-/// A set of tracts
+/// A set of tracts.
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct TractStore<TID, PID, CID> {
-    /// Set of tracts
+    /// Set of tracts.
     tracts: FxHashMap<TID, Tract<TID, PID, CID>>,
-    /// Tract area
+    /// Tract area.
     tract_area: Area,
 }
 impl<TID, PID, CID> TractStore<TID, PID, CID> {
@@ -260,14 +263,14 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
         let tract = self.get(tract_id)?;
         Some(tract.totals().get(cat_id).copied().unwrap_or(0.0))
     }
-    /// Returns the area of a tract
+    /// Returns the area of a tract.
     #[inline]
     pub fn area(&self) -> &Area { &self.tract_area }
     /// Returns an iterator over the tracts.
     #[must_use]
     #[inline]
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (&TID, &Tract<TID, PID, CID>)> + Clone {
-        self.tracts.iter()
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &Tract<TID, PID, CID>> + Clone {
+        self.tracts.values()
     }
     /// Returns the number of tracts in the store.
     #[must_use]
@@ -283,11 +286,11 @@ impl<TID, PID, CID> TractStore<TID, PID, CID> {
     #[inline]
     pub fn add_value_from_entry(
         &mut self,
-        entry: TractValueEntry<TID, CID>,
+        entry: &TractValueEntry<TID, CID>,
     ) -> Result<(), TractError>
     where
         TID: Copy + Display + Eq + Hash,
-        CID: Ord,
+        CID: Copy + Ord,
     {
         let tract_id = entry.tract_id();
         let tract = self

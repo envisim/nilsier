@@ -2,7 +2,7 @@
 % Please edit documentation in R/nils.R
 \name{nilsier}
 \alias{nilsier}
-\title{Estimate totals using the NILS hierarchical design}
+\title{Estimate totals}
 \usage{
 nilsier(
   psus,
@@ -80,12 +80,12 @@ target variable in the category.}
 }
 }
 \description{
-Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
+Estimates the total of some variable surveyed by the NILS hierarchical sampling framework.
 }
 \details{
-The function combines plot-level observations (\code{plot_data}), tract-level information
-(\code{tract_data}), PSU hierarchy (\code{psus}), and category assignments (\code{category_psu_map}) to estimate
-totals under the NILS sampling design.
+The function combines plot-level observations (\code{data}), tract-level information (\code{tracts}), PSU
+hierarchy (\code{psus}), and category assignments (\code{categories}) to estimate totals under the NILS
+sampling design.
 \subsection{Variance estimation strategy}{
 
 If the \code{psus} were selected using a spatially balanced sampling design, the \code{"srs"} variance

@@ -11,7 +11,7 @@
 // program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Design-based estimators and variance estimators for National Inventories of Landscapes in
-//! Sweden (NILS)
+//! Sweden (NILS).
 
 pub mod category;
 pub mod psu;
@@ -20,6 +20,7 @@ mod utils;
 
 use std::fmt::Display;
 use std::hash::Hash;
+use std::iter::once;
 use std::num::NonZeroUsize;
 use std::ops::{
     Index,
@@ -27,7 +28,6 @@ use std::ops::{
     Range,
 };
 
-use category::CategoryValue;
 use envisim_utils::kd_tree::Tree;
 use envisim_utils::kd_tree::searcher::{
     KNearestNeighbourSearcher,
@@ -60,7 +60,7 @@ use crate::tract::{
     TractStore,
 };
 
-/// Strategy used in the estimation of the covariance
+/// Strategy used in the estimation of the covariance.
 #[non_exhaustive]
 #[must_use]
 #[derive(Debug, Copy, Clone)]
@@ -70,7 +70,7 @@ pub enum CovarianceStrategy {
     /// Uses the nearest neighbours variance estimation.
     NearestNeighbours,
 }
-/// Contains information of covariance between category id-pairs
+/// Contains information of covariance between category id-pairs.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct CovarianceMatrix<CID> {
@@ -78,11 +78,11 @@ pub struct CovarianceMatrix<CID> {
     cov_mat: FxHashMap<CatIdPair<CID>, f64>,
     /// Number of categories. `cov_mat` should be of length `n_cats * (n_cats + 1) / 2`.
     n_cats: NonZeroUsize,
-    /// Covariance estimation strategy
+    /// Covariance estimation strategy.
     estimation_strategy: CovarianceStrategy,
 }
 impl<CID> CovarianceMatrix<CID> {
-    /// Constructs a new covariance storage from `psu_store`
+    /// Constructs a new covariance storage from `psu_store`.
     #[inline]
     fn from_psustore<PID>(psu_store: &PsuStore<PID, CID>) -> Self
     where
@@ -110,10 +110,10 @@ impl<CID> CovarianceMatrix<CID> {
             estimation_strategy: CovarianceStrategy::SimpleRandomSample,
         }
     }
-    /// Returns the estimation strategy
+    /// Returns the estimation strategy.
     #[inline]
     pub fn estimation_strategy(&self) -> CovarianceStrategy { self.estimation_strategy }
-    /// Sets the estimation strategy
+    /// Sets the estimation strategy.
     #[inline]
     fn set_estimation_strategy(&mut self, strategy: CovarianceStrategy) {
         self.estimation_strategy = strategy;
@@ -152,7 +152,7 @@ impl<CID> CovarianceMatrix<CID> {
             .get_mut(&cat_pair.into())
             .expect("cat_pair to exist") = cov;
     }
-    /// Adds to a covariance element
+    /// Adds to a covariance element.
     /// # Panics
     /// Panics if `cat_pair` does not exist.
     #[inline]
@@ -166,7 +166,7 @@ impl<CID> CovarianceMatrix<CID> {
             .get_mut(&cat_pair.into())
             .expect("cat_pair to exist") += cov;
     }
-    /// Returns the variance, i.e. the sum of the covariance matrix
+    /// Returns the variance, i.e. the sum of the covariance matrix.
     #[must_use]
     #[inline]
     pub fn variance(&self) -> f64
@@ -239,42 +239,187 @@ where
     }
 }
 
-/// The return value of an estimate.
 #[must_use]
-#[derive(Debug, Clone)]
-pub struct EstimatePerCategory<CID> {
-    /// Estimate per category.
-    pub estimate_per_category: CategoryStore<CID, f64>,
-    /// Number of tracts per category that have positive values.
-    pub positive_tracts_per_category: CategoryStore<CID, u64>,
-    /// Number of tracts that have positive values in any category.
+#[derive(Clone, Copy, Default, Debug)]
+/// Contains an estimate for a category.
+pub struct CategorySum {
+    /// Sum.
+    pub sum: f64,
+    /// Number of tracts which have positive measurements for this category.
     pub positive_tracts: u64,
+    /// Number of tracts which have non zero measurements for this category.
+    pub non_zero_tracts: u64,
 }
-impl<CID> EstimatePerCategory<CID> {
-    /// Returns the estimate
-    #[must_use]
+impl CategorySum {
+    /// Constructs a new `CategorySum`.
     #[inline]
-    pub fn estimate(&self) -> f64 {
-        self.estimate_per_category
-            .iter()
-            .map(CategoryValue::get)
-            .sum()
+    pub fn new(sum: f64) -> Self {
+        Self {
+            sum,
+            ..Default::default()
+        }
     }
 }
 
-/// A store of Nils PSUs and tracts
+/// The return value of an estimate.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct CategorySums<CID> {
+    /// Sums per category.
+    pub categories: CategoryStore<CID, CategorySum>,
+    /// Number of tracts that have positive values in any category.
+    pub positive_tracts: u64,
+    /// Number of tracts that have non-zero values in any category.
+    pub non_zero_tracts: u64,
+}
+impl<CID> CategorySums<CID> {
+    /// Constructs a new, empty, epc-store.
+    #[inline]
+    pub fn new<PID>(psus: &PsuStore<PID, CID>) -> Self
+    where
+        CID: Copy + Ord,
+    {
+        Self {
+            categories: psus
+                .category_iter()
+                .map(|(cat_id, _)| cat_id)
+                .copied()
+                .collect(),
+            positive_tracts: 0,
+            non_zero_tracts: 0,
+        }
+    }
+    /// Constructs a new, empty, epc-store, with some capacity.
+    #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            categories: CategoryStore::with_capacity(capacity),
+            positive_tracts: 0,
+            non_zero_tracts: 0,
+        }
+    }
+    /// Get the value of a category, if it exists and has non-zero entries.
+    #[must_use]
+    #[inline]
+    pub fn get_sum_nz(&self, cat_id: &CID) -> Option<f64>
+    where
+        CID: Ord,
+    {
+        let cs = self.categories.get(cat_id)?;
+        (cs.non_zero_tracts > 0).then_some(cs.sum)
+    }
+    /// Returns the estimate.
+    #[must_use]
+    #[inline]
+    pub fn total(&self) -> f64 { self.categories.iter().map(|ct| ct.get().sum).sum() }
+    /// Running sum tracts.
+    #[inline]
+    fn sum_tracts_running<'btract, PID, TID, I>(&mut self, tracts: I)
+    where
+        PID: 'btract,
+        CID: 'btract + Ord,
+        TID: 'btract,
+        I: Iterator<Item = &'btract Tract<TID, PID, CID>>,
+        CID: Ord,
+    {
+        for tract in tracts {
+            for ct in tract.totals().iter() {
+                if *ct.get() == 0.0 {
+                    continue;
+                }
+
+                let Some(sum_cat) = self.categories.get_mut(ct.cat_id()) else {
+                    continue;
+                };
+                sum_cat.sum += ct.get();
+                sum_cat.non_zero_tracts += 1;
+
+                if 0.0 < *ct.get() {
+                    sum_cat.positive_tracts += 1;
+                }
+            }
+        }
+    }
+    /// Sum tracts.
+    #[inline]
+    fn sum_tracts<'btract, PID, TID, I>(&mut self, tracts: I)
+    where
+        PID: 'btract,
+        CID: 'btract + Ord,
+        TID: 'btract,
+        I: Iterator<Item = &'btract Tract<TID, PID, CID>>,
+        CID: Ord,
+    {
+        for tract in tracts {
+            let mut pos_tract = false;
+            let mut nz_tract = false;
+            for ct in tract.totals().iter() {
+                if *ct.get() == 0.0 {
+                    continue;
+                }
+
+                let Some(sum_cat) = self.categories.get_mut(ct.cat_id()) else {
+                    continue;
+                };
+                sum_cat.sum += ct.get();
+                sum_cat.non_zero_tracts += 1;
+                nz_tract = true;
+
+                if 0.0 < *ct.get() {
+                    sum_cat.positive_tracts += 1;
+                    pos_tract = true;
+                }
+            }
+
+            if nz_tract {
+                self.non_zero_tracts += 1;
+                if pos_tract {
+                    self.positive_tracts += 1;
+                }
+            }
+        }
+    }
+}
+impl<CID> FromIterator<CID> for CategorySums<CID>
+where
+    CID: Ord,
+{
+    #[inline]
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = CID>,
+    {
+        Self {
+            categories: iter.into_iter().collect(),
+            positive_tracts: 0,
+            non_zero_tracts: 0,
+        }
+    }
+}
+
+/// A store of Nils PSUs and tracts.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct Nils<PID, CID, TID> {
-    /// PSUs
+    /// PSUs.
     psus: PsuStore<PID, CID>,
-    /// Tracts
+    /// Tracts.
     tracts: TractStore<TID, PID, CID>,
-    /// Frame area
+    /// Frame area.
     frame_area: Area,
+    /// Estimates.
+    estimates: CategorySums<CID>,
 }
+/// Deconstructioning tuple of `Nils`.
+pub type NilsParts<PID, CID, TID> = (
+    PsuStore<PID, CID>,
+    TractStore<TID, PID, CID>,
+    Area,
+    CategorySums<CID>,
+);
+
 impl<PID, CID, TID> Nils<PID, CID, TID> {
-    /// Initialise a `Nils` from with `psus` and `tracts` stores.
+    /// Initialise a `Nils` from with `psus` and `tracts` stores, and calculate estimates.
     /// # Errors
     /// Returns an error if the psu sizes does not match the tract sizes.
     #[inline]
@@ -285,6 +430,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     ) -> Result<Self, NilsError>
     where
         PID: Copy + Eq,
+        CID: Copy + Ord,
     {
         // Store PID, size of tracts that starts appearing here and actual number of tracts
         let mut psu_sizes: Vec<(PID, u32, u32)> = Vec::with_capacity(psus.len());
@@ -308,7 +454,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         }
 
         // Find the corresponding tracts
-        for (_, tract) in tracts.iter() {
+        for tract in tracts.iter() {
             for psu_size in &mut psu_sizes {
                 if *tract.psu_id() == psu_size.0 {
                     psu_size.2 += 1;
@@ -324,66 +470,37 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             }
         }
 
+        // Calc estimates
+        // Sum estimates per categories
+        let mut epc = CategorySums::new(&psus);
+        epc.sum_tracts(tracts.iter());
+
+        for psu in psus.iter() {
+            let size = f64::from(psu.size().get());
+            let area_frac = frame_area.get() / size;
+
+            #[expect(clippy::missing_panics_doc, reason = "bug")]
+            for cat_id in psu.categories_iter() {
+                epc.categories.get_mut(cat_id).expect("CID to exist").sum *= area_frac;
+            }
+        }
+
         Ok(Self {
             psus,
             tracts,
             frame_area,
+            estimates: epc,
         })
     }
-    /// Estimates totals per category.
-    /// Returns a tuple:
-    /// 1. Totals per category.
-    /// 2. Number of tracts with positive values per category.
-    /// 3. Number of tracts with positive values in a category.
-    #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
+    /// Retrieve parts.
     #[inline]
-    pub fn estimate_per_category(&self) -> EstimatePerCategory<CID>
-    where
-        CID: Copy + Ord,
-    {
-        let mut epc = EstimatePerCategory {
-            estimate_per_category: self
-                .psus
-                .category_iter()
-                .map(|(cat_id, _)| cat_id)
-                .copied()
-                .collect(),
-            positive_tracts_per_category: self
-                .psus
-                .category_iter()
-                .map(|(cat_id, _)| cat_id)
-                .copied()
-                .collect(),
-            positive_tracts: 0,
-        };
-
-        for (_, tract) in self.tracts.iter() {
-            let mut pos_tract = false;
-            tract.totals().iter().for_each(|&ct| {
-                if 0.0 < *ct.get() {
-                    epc.estimate_per_category.add_value(ct);
-                    epc.positive_tracts_per_category
-                        .add_value((*ct.cat_id(), 1));
-                    pos_tract = true;
-                }
-            });
-            epc.positive_tracts += u64::from(pos_tract);
-        }
-
-        for psu in self.psus.iter() {
-            let size = f64::from(psu.size().get());
-            let area_frac = self.frame_area.get() / size;
-
-            for cat_id in psu.categories_iter() {
-                *epc.estimate_per_category
-                    .get_mut(cat_id)
-                    .expect("cat id to exist") *= area_frac;
-            }
-        }
-
-        epc
+    pub fn into_parts(self) -> NilsParts<PID, CID, TID> {
+        (self.psus, self.tracts, self.frame_area, self.estimates)
     }
-    /// Sorts the `tract_ids` and constructs tract ranges over the psus
+    /// Returns a reference to the estimates.
+    #[inline]
+    pub fn estimates(&self) -> &CategorySums<CID> { &self.estimates }
+    /// Sorts the `tract_ids` and constructs tract ranges over the psus.
     #[must_use]
     #[inline]
     fn tract_ranges(&self, tract_ids: &mut [TID]) -> Vec<(PID, Range<usize>)>
@@ -433,10 +550,12 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         ranges
     }
-    /// Sorts the `category_ids` and constructs category ranges over the psus
+    /// Filteres the categories, so that only categories with some non zero values remain.
+    /// Sorts the categories according to PSU, and returns the sorted filtered categories together
+    /// with the range of categories belonging to each PSU.
     #[must_use]
     #[inline]
-    fn category_ranges(&self, estimates: &EstimatePerCategory<CID>) -> (Vec<CID>, Vec<Range<usize>>)
+    fn category_ranges(&self) -> (Vec<CID>, Vec<Range<usize>>)
     where
         CID: Copy + Ord,
     {
@@ -446,9 +565,10 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
         for psu in self.psus.iter() {
             let start = categories.len();
+            // Add only cats that have some nz values
             categories.extend(psu.categories_iter().filter_map(|cid| {
-                let pos_tracts = *estimates.positive_tracts_per_category.get(cid)?;
-                (pos_tracts > 0).then_some(*cid)
+                let nz_tracts = self.estimates.categories.get(cid)?.non_zero_tracts;
+                (nz_tracts > 0).then_some(*cid)
             }));
             let end = categories.len();
             ranges.push(start..end);
@@ -463,10 +583,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     /// invalid.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]
     #[inline]
-    pub fn covariance_estimate(
-        &self,
-        estimates: &EstimatePerCategory<CID>,
-    ) -> Result<CovarianceMatrix<CID>, NilsError>
+    pub fn covariance_estimate(&self) -> Result<CovarianceMatrix<CID>, NilsError>
     where
         PID: Copy + Eq,
         CID: Copy + Hash + Ord,
@@ -478,12 +595,13 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         cov_mat.set_estimation_strategy(CovarianceStrategy::SimpleRandomSample);
 
         // Get vector of tract ids
-        let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(tid, _)| *tid).collect();
+        let mut tract_ids: Vec<TID> = self.tracts.iter().map(Tract::tract_id).copied().collect();
         let tract_ranges = self.tract_ranges(&mut tract_ids);
 
         // Prepare category sum container
-        let (categories, category_ranges) = self.category_ranges(estimates);
-        let mut sums: CategoryStore<CID, f64> = categories.iter().copied().collect();
+        let (categories, category_ranges) = self.category_ranges();
+        // Sums cumulate over each PSU (running sums)
+        let mut sums: CategorySums<CID> = categories.iter().copied().collect();
 
         // loop from smallest to largest psu
         // We should calculate the covariance of category A and B by including the tracts that
@@ -493,13 +611,12 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         for (psu_ord, (psu_id, tract_range)) in tract_ranges.into_iter().enumerate() {
             let tracts_subset = &tract_ids[..tract_range.end];
 
-            // Successively add to the totals.
-            for tract_id in &tract_ids[tract_range.clone()] {
-                let tract = self.tracts.get(tract_id).expect("tract id to exist");
-                tract.totals().iter().for_each(|&ct| {
-                    sums.add_value(ct);
-                });
-            }
+            // Successively add tracts to the totals.
+            sums.sum_tracts(
+                tract_ids[tract_range.clone()]
+                    .iter()
+                    .map(|tid| self.tracts.get(tid).expect("tract id to exist")),
+            );
 
             let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
             let psu_size = psu.size().get().to_f64().expect("u32 -> f64");
@@ -510,9 +627,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
             for cat_ord in category_ranges[psu_ord].clone() {
                 let cat_curr = &categories[cat_ord];
 
-                // Values are non-negative -- a zero sum implies that all tracts are 0.0
-                let mean_curr = match sums.get(cat_curr).copied() {
-                    Some(sum) if sum > 0.0 => sum / psu_size,
+                let mean_curr = match sums.get_sum_nz(cat_curr) {
+                    Some(v) => v / psu_size,
                     _ => continue,
                 };
 
@@ -531,8 +647,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
                 // Then we calculate for categories in current PSU.
                 // We clone so we dont have to visit the same category twice
                 for cat_small in &categories[cat_ord..category_ranges[psu_ord].end] {
-                    let mean_small = match sums.get(cat_small).copied() {
-                        Some(sum) if sum > 0.0 => sum / psu_size,
+                    let mean_small = match sums.get_sum_nz(cat_small) {
+                        Some(v) => v / psu_size,
                         _ => continue,
                     };
                     let var_small = tracts_subset
@@ -566,8 +682,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
                     for cat_large in &categories[category_ranges[psu_inner_ord].clone()] {
                         // We're looking for mean in intersect set, hence psu_size is the mean size
-                        let mean_large = match sums.get(cat_large).copied() {
-                            Some(sum) if sum > 0.0 => sum / psu_size,
+                        let mean_large = match sums.get_sum_nz(cat_large) {
+                            Some(v) => v / psu_size,
                             _ => continue,
                         };
 
@@ -596,7 +712,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     }
     /// Returns an estimated covariance matrix using the nearest neighbour variance estimator.
     ///
-    /// Spreading matrix assumed to be in same order as insertion order of tracts
+    /// Spreading matrix assumed to be in same order as insertion order of tracts.
     /// # Errors
     /// Returns an error if the psus doesn't contain any categories, or if the `frame_area` is
     /// invalid.
@@ -605,7 +721,6 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     #[inline]
     pub fn covariance_estimate_nn<P>(
         &self,
-        estimates: &EstimatePerCategory<CID>,
         spreading: &SpreadingOptions<P>,
     ) -> Result<CovarianceMatrix<CID>, NilsError>
     where
@@ -618,7 +733,7 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         let mut cov_mat = CovarianceMatrix::from_psustore(&self.psus);
         cov_mat.set_estimation_strategy(CovarianceStrategy::NearestNeighbours);
         // Get vector of tract ids,
-        let mut tract_ids: Vec<TID> = self.tracts.iter().map(|(&tid, _)| tid).collect();
+        let mut tract_ids: Vec<TID> = self.tracts.iter().map(Tract::tract_id).copied().collect();
         // Create tree
         let mut searcher = Searcher::new(
             spreading,
@@ -627,8 +742,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
         )?;
 
         let tract_ranges = self.tract_ranges(&mut tract_ids);
-        let (categories, category_ranges) = self.category_ranges(estimates);
-        let mut sums = CategoryStore::<CID, f64>::with_capacity(categories.len());
+        let (categories, category_ranges) = self.category_ranges();
+        let mut sums = CategorySums::with_capacity(categories.len());
 
         // loop from smallest to largest psu
         // We should calculate the covariance of category A and B by including the tracts that
@@ -647,7 +762,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
                 searcher.insert_units(&tract_ids[tract_range]);
             }
 
-            sums.initialize(categories[category_ranges[psu_ord].start..].iter());
+            sums.categories
+                .initialize(categories[category_ranges[psu_ord].start..].iter());
 
             // Smaller psu info
             let psu = self.psus.get_psu(&psu_id).expect("psu id to exist");
@@ -672,19 +788,17 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
 
                 // Start by summing all categories .. we can skip any 0 sum category as cov
                 // contribution will be 0
-                sums.reset_to_zero();
-                add_cats_from_tract(&mut sums, tract);
-                searcher.neighbour_tracts(&self.tracts).for_each(|ntract| {
-                    add_cats_from_tract(&mut sums, ntract);
-                });
+                sums.categories.reset_to_default();
+                sums.sum_tracts_running(once(tract));
+                sums.sum_tracts_running(searcher.neighbour_tracts(&self.tracts));
 
                 // Outer loop of cats from current psu
                 for cat_ord in category_ranges[psu_ord].clone() {
                     let cat_curr = &categories[cat_ord];
                     let deviance_curr = {
                         // If all units are 0, the covs will be 0
-                        let mean = match sums.get(cat_curr).copied() {
-                            Some(sum) if sum > 0.0 => sum / psu_nn,
+                        let mean = match sums.get_sum_nz(cat_curr) {
+                            Some(v) => v / psu_nn,
                             _ => continue,
                         };
                         let val = tract.totals().get(cat_curr).copied().unwrap_or(0.0);
@@ -698,8 +812,8 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
                     for cat_other in &categories[(cat_ord + 1)..] {
                         let deviance_other = {
                             // If all units are 0, the covs will be 0
-                            let mean = match sums.get(cat_other).copied() {
-                                Some(sum) if sum > 0.0 => sum / psu_nn,
+                            let mean = match sums.get_sum_nz(cat_other) {
+                                Some(v) => v / psu_nn,
                                 _ => continue,
                             };
                             let val = tract.totals().get(cat_other).copied().unwrap_or(0.0);
@@ -739,22 +853,22 @@ impl<PID, CID, TID> Nils<PID, CID, TID> {
     }
 }
 
-/// Tree-searcher utility
+/// Tree-searcher utility.
 #[must_use]
 struct Searcher<'bdata, P>
 where
     P: PointSet,
 {
-    /// The tree structure
+    /// The tree structure.
     tree: Tree<'bdata, P>,
-    /// The searcher
+    /// The searcher.
     searcher: KNearestNeighbourSearcher<P>,
 }
 impl<'bdata, P, TID> Searcher<'bdata, P>
 where
     P: PointSet<Id = TID>,
 {
-    /// Constructs a new tree-searcher
+    /// Constructs a new tree-searcher.
     /// # Panics
     /// Panic implies that `nn_size` is too low (1).
     #[inline]
@@ -771,7 +885,7 @@ where
         );
         Ok(Self { tree, searcher })
     }
-    /// Removes units from the tree
+    /// Removes units from the tree.
     #[inline]
     fn remove_units(&mut self, ids: &[TID])
     where
@@ -783,7 +897,7 @@ where
                 .expect("tract_id to exist in data");
         }
     }
-    /// Inserts units into the tree
+    /// Inserts units into the tree.
     #[inline]
     fn insert_units(&mut self, ids: &[TID])
     where
@@ -810,7 +924,8 @@ where
     }
     /// Searches for the `nn_size - 1` nearest neighbours to `tract_id`.
     /// # Panics
-    /// Panics if the `tract_id` cannot be found in the tree data (BUG), or if no neighbours can be found
+    /// Panics if the `tract_id` cannot be found in the tree data (BUG), or if no neighbours can be
+    /// found.
     #[inline]
     fn search(&mut self, tract_id: &TID)
     where
@@ -822,7 +937,7 @@ where
             .search(&self.tree)
             .expect("");
     }
-    /// Returns an iterator of the nearest neighbours to the search unit
+    /// Returns an iterator of the nearest neighbours to the search unit.
     #[inline]
     fn neighbours<'bitem>(&'bitem self) -> impl Iterator<Item = &'bitem TID>
     where
@@ -830,7 +945,7 @@ where
     {
         self.searcher.neighbours().iter().map(Neighbour::id)
     }
-    /// Returs
+    /// Returns an iterator over the tract neighbours.
     #[inline]
     fn neighbour_tracts<'bitem, PID, CID>(
         &'bitem self,
@@ -841,18 +956,5 @@ where
     {
         self.neighbours()
             .map(|tid| tracts.get(tid).expect("tract to exist"))
-    }
-}
-
-/// Adds all non-zero `categories` from a `tract` into a `sums`-container
-#[inline]
-fn add_cats_from_tract<PID, CID, TID>(
-    sums: &mut CategoryStore<CID, f64>,
-    tract: &Tract<TID, PID, CID>,
-) where
-    CID: Copy + Ord,
-{
-    for ct in tract.totals().iter() {
-        sums.add_existing_value(*ct);
     }
 }

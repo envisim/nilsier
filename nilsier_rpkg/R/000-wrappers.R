@@ -37,12 +37,20 @@ NULL
   stop(class, " cannot be modified", call. = FALSE)
 }
 
-#' Estimates according to NILS design
+#' Estimates according to NILS design.
 #'
 #' @keywords internal
 #' @noRd
 `rust_nils_estimate` <- function(`psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`) {
   .Call(savvy_rust_nils_estimate__impl, `psus`, `categories`, `tracts`, `values`, `frame_area`, `tract_area`, `variance_strategy`)
+}
+
+#' Estimate a ratio according to NILS design.
+#'
+#' @keywords internal
+#' @noRd
+`rust_nils_estimate_ratio` <- function(`psus`, `categories`, `tracts`, `values_y`, `values_z`, `frame_area`, `tract_area`, `variance_strategy`) {
+  .Call(savvy_rust_nils_estimate_ratio__impl, `psus`, `categories`, `tracts`, `values_y`, `values_z`, `frame_area`, `tract_area`, `variance_strategy`)
 }
 
 

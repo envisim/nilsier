@@ -22,25 +22,25 @@ pub use std::num::NonZeroU32;
 use num_traits::ToPrimitive;
 use thiserror::Error;
 
-/// PSU type errors
+/// PSU type errors.
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum PsuError {
-    /// PSU size must be positive
+    /// PSU size must be positive.
     #[error("size must be positive")]
     InvalidSize,
-    /// PSU neighbourhood size must be positive
+    /// PSU neighbourhood size must be positive.
     #[error("neighbourhood size must be positive")]
     InvalidNeighbourhoodSize,
-    /// PSU ID not found
+    /// PSU ID not found.
     #[error("PSU ID ({0}) not found")]
     PsuIdNotFound(String),
-    /// Category ID collision
+    /// Category ID collision.
     #[error("CAT ID ({0}) collision")]
     CatIdCollision(String),
 }
 impl PsuError {
-    /// Returns `IdNotFound` error for TID
+    /// Returns `IdNotFound` error for TID.
     #[must_use]
     #[inline]
     fn pid_not_found<PID>(id: &PID) -> Self
@@ -49,7 +49,7 @@ impl PsuError {
     {
         Self::PsuIdNotFound(id.to_string())
     }
-    /// Returns `IdCollision` error for TID
+    /// Returns `IdCollision` error for TID.
     #[must_use]
     #[inline]
     fn cid_collision<CID>(id: &CID) -> Self
@@ -60,20 +60,20 @@ impl PsuError {
     }
 }
 
-/// PSU information header
+/// PSU information header.
 #[must_use]
 #[derive(Debug, Clone, Copy)]
 pub struct PsuHeader<PID> {
-    /// Id of PSU
+    /// Id of PSU.
     psu_id: PID,
-    /// Size of PSU (sample size)
+    /// Size of PSU (sample size).
     size: NonZeroU32,
 }
 impl<PID> PsuHeader<PID> {
-    /// Constructs a new PSU information header
+    /// Constructs a new PSU information header.
     #[inline]
     pub fn new(psu_id: PID, size: NonZeroU32) -> Self { Self { psu_id, size } }
-    /// Tries to construct a new PSU information header
+    /// Tries to construct a new PSU information header.
     /// # Errors
     /// If `size` or `nn_size` cannot be converted, i.e. are 0.
     #[inline]
@@ -84,10 +84,10 @@ impl<PID> PsuHeader<PID> {
         let size = size.try_into().map_err(|_| PsuError::InvalidSize)?;
         Ok(Self::new(psu_id, size))
     }
-    /// Returns the PSU identifier
+    /// Returns the PSU identifier.
     #[inline]
     pub fn psu_id(&self) -> &PID { &self.psu_id }
-    /// Returns the sample size of the PSU
+    /// Returns the sample size of the PSU.
     #[must_use]
     #[inline]
     pub fn size(&self) -> &NonZeroU32 { &self.size }
@@ -115,24 +115,24 @@ where
     fn cmp(&self, other: &Self) -> Ordering { self.size.cmp(&other.size) }
 }
 
-/// PSU information
+/// PSU information.
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct PsuData<PID, CID> {
-    /// PSU header info
+    /// PSU header info.
     header: PsuHeader<PID>,
-    /// Size of nearest neighbourhood
+    /// Size of nearest neighbourhood.
     nn_size: NonZeroU32,
-    /// Categories that appears in Psus of smaller sizes
+    /// Categories that appears in Psus of smaller sizes.
     categories: Vec<CID>,
 }
 impl<PID, CID> PsuData<PID, CID>
 // where
 //     PID: Identifier,
 {
-    /// Default nearest neighbour size
+    /// Default nearest neighbour size.
     const NN_DEFAULT_SIZE: NonZeroU32 = NonZeroU32::new(4).expect("4 > 0");
-    /// Constructs a new PSU information header
+    /// Constructs a new PSU information header.
     #[inline]
     pub fn new(header: PsuHeader<PID>, nn_size: NonZeroU32) -> Self {
         Self {
@@ -141,7 +141,7 @@ impl<PID, CID> PsuData<PID, CID>
             categories: Vec::default(),
         }
     }
-    /// Tries to construct a new PSU information header
+    /// Tries to construct a new PSU information header.
     /// # Errors
     /// If `nn_size` cannot be converted, i.e. are 0.
     #[inline]
@@ -154,22 +154,22 @@ impl<PID, CID> PsuData<PID, CID>
             .map_err(|_| PsuError::InvalidNeighbourhoodSize)?;
         Ok(Self::new(header, nn_size))
     }
-    /// Returns a reference to the header
+    /// Returns a reference to the header.
     #[inline]
     pub fn header(&self) -> &PsuHeader<PID> { &self.header }
-    /// Returns the PSU identifier
+    /// Returns the PSU identifier.
     #[inline]
     pub fn psu_id(&self) -> &PID { self.header.psu_id() }
-    /// Returns the sample size of the PSU
+    /// Returns the sample size of the PSU.
     #[must_use]
     #[inline]
     pub fn size(&self) -> &NonZeroU32 { self.header.size() }
     /// Returns the number of nearest neighbours to be used in spatially balanced variance
-    /// estimation
+    /// estimation.
     #[must_use]
     #[inline]
     pub fn nn_size(&self) -> &NonZeroU32 { &self.nn_size }
-    /// Returns an iterator over the categories of the PSU
+    /// Returns an iterator over the categories of the PSU.
     #[must_use]
     #[inline]
     pub fn categories_iter(&self) -> impl ExactSizeIterator<Item = &CID> + Clone + '_ {
@@ -252,7 +252,7 @@ pub struct PsuStore<PID, CID> {
     // psus probably very small (about 10?)
     // store sorted by size
     // categories medium sized (about 100?)
-    /// Psu storage, sorted by [`PsuHeader`] (size)
+    /// Psu storage, sorted by [`PsuHeader`] (size).
     psus: Vec<PsuData<PID, CID>>,
 }
 
@@ -263,22 +263,22 @@ impl<PID, CID> PsuStore<PID, CID> {
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &PsuData<PID, CID>> + Clone {
         self.psus.iter()
     }
-    /// Returns an iterator over the categories in the store
+    /// Returns an iterator over the categories in the store.
     #[inline]
     pub fn category_iter(&self) -> impl Iterator<Item = (&CID, &PsuData<PID, CID>)> + Clone {
         self.psus
             .iter()
             .flat_map(|pd| pd.categories.iter().map(move |cat_id| (cat_id, pd)))
     }
-    /// Returns the number of PSUs in the store
+    /// Returns the number of PSUs in the store.
     #[must_use]
     #[inline]
     pub fn len(&self) -> usize { self.psus.len() }
-    /// Returns `true` if the PSU collection is empty
+    /// Returns `true` if the PSU collection is empty.
     #[must_use]
     #[inline]
     pub fn is_empty(&self) -> bool { self.psus.is_empty() }
-    /// Returns a reference to the header info of the PSU id
+    /// Returns a reference to the header info of the PSU id.
     /// # Errors
     /// Returns an error if `psu_id` is not found.
     #[inline]
@@ -288,7 +288,7 @@ impl<PID, CID> PsuStore<PID, CID> {
     {
         self.psus.iter().find(|dt| psu_id == dt.psu_id())
     }
-    /// Returns a mutable reference to the header info of the PSU id
+    /// Returns a mutable reference to the header info of the PSU id.
     /// # Errors
     /// Returns an error if `psu_id` is not found.
     #[inline]
@@ -343,7 +343,7 @@ impl<PID, CID> PsuStore<PID, CID> {
         let idx = self.order_of_psu(psu_id)?;
         Some(self.psus[idx..].iter())
     }
-    /// Adds a new category to a psu
+    /// Adds a new category to a psu.
     /// # Errors
     /// Returns an error if `psu_id` does not exist, or if `cat_id` already exists.
     #[inline]
@@ -360,7 +360,7 @@ impl<PID, CID> PsuStore<PID, CID> {
             .ok_or(PsuError::pid_not_found(psu_id))
             .map(|pd| pd.insert_category(cat_id))
     }
-    /// Removes a category from a PSU
+    /// Removes a category from a PSU.
     #[inline]
     pub fn remove_category(&mut self, psu_id: &PID, cat_id: &CID) -> Option<bool>
     where
@@ -387,7 +387,7 @@ impl<PID, CID> PsuStore<PID, CID> {
     {
         self.get_psu(psu_id).map(|pd| pd.contains_category(cat_id))
     }
-    /// Initializes the storage by `(key, size)` entries
+    /// Initializes the storage by `(key, size)` entries.
     /// # Errors
     /// Returns an error if the iterator sizes does not match.
     #[expect(clippy::missing_panics_doc, reason = "panic implies bug")]

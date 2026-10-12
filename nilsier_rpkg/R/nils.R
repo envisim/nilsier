@@ -1,7 +1,7 @@
-#' Estimate totals using the NILS hierarchical design
+#' Estimate totals
 #'
 #' @description
-#' Estimates the total of some variable surveyed under the NILS hierarchical sampling framework.
+#' Estimates the total of some variable surveyed by the NILS hierarchical sampling framework.
 #'
 #' @inheritParams prepare_psus psus
 #' @inheritParams prepare_categories
@@ -16,9 +16,9 @@
 #' `"nearest_neighbour"`.
 #'
 #' @details
-#' The function combines plot-level observations (`plot_data`), tract-level information
-#' (`tract_data`), PSU hierarchy (`psus`), and category assignments (`category_psu_map`) to estimate
-#' totals under the NILS sampling design.
+#' The function combines plot-level observations (`data`), tract-level information (`tracts`), PSU
+#' hierarchy (`psus`), and category assignments (`categories`) to estimate totals under the NILS
+#' sampling design.
 #'
 #' ## Variance estimation strategy
 #' If the `psus` were selected using a spatially balanced sampling design, the `"srs"` variance
